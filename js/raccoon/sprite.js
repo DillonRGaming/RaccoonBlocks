@@ -1,10 +1,21 @@
 Object.assign(window.Raccoon, {
     setActiveSprite(spriteId) { 
         if (!this.sprites[spriteId] || this.activeSpriteId === spriteId) return; 
+        
+        const oldSprite = this.getActiveSprite();
+        if (oldSprite) {
+            this.blockContainer.querySelectorAll(`.block[data-sprite-id="${oldSprite.id}"]`).forEach(el => el.classList.add('hidden'));
+            this.blockContainer.querySelectorAll(`.comment-container[data-sprite-id="${oldSprite.id}"]`).forEach(el => el.classList.add('hidden'));
+        }
+
         this.activeSpriteId = spriteId; 
-        this.blockContainer.querySelectorAll('.block').forEach(el => { 
-            el.classList.toggle('hidden', el.dataset.spriteId !== spriteId); 
-        }); 
+
+        const newSprite = this.getActiveSprite();
+        if (newSprite) {
+            this.blockContainer.querySelectorAll(`.block[data-sprite-id="${newSprite.id}"]`).forEach(el => el.classList.remove('hidden'));
+            this.blockContainer.querySelectorAll(`.comment-container[data-sprite-id="${newSprite.id}"]`).forEach(el => el.classList.remove('hidden'));
+        }
+        
         this.uiUpdateCallback(); 
     },
 
@@ -15,6 +26,8 @@ Object.assign(window.Raccoon, {
         const newCostume = await this.createCostumeFromSrc(src);
         if (newCostume) {
             sprite.costume = newCostume;
+            sprite.size = 100;
+            sprite.baseScale = 1.0;
         }
         this.uiUpdateCallback();
     },
@@ -28,23 +41,22 @@ Object.assign(window.Raccoon, {
             const img = new Image();
             const objectURL = URL.createObjectURL(blob);
             img.src = objectURL;
-            await img.decode();
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
             URL.revokeObjectURL(objectURL);
 
             const bitmap = await createImageBitmap(img);
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(svgText, "image/svg+xml");
-            const svgNode = doc.querySelector('svg');
 
             return {
                 svgText: svgText,
                 bitmap: bitmap,
                 width: bitmap.width,
                 height: bitmap.height,
-                isVector: !!svgNode
             };
         } catch (error) {
+            console.error("Error creating costume:", error);
             return null;
         }
     },
@@ -56,21 +68,24 @@ Object.assign(window.Raccoon, {
         const layer = allDrawable.length > 0 ? Math.max(...allDrawable.map(s => s.layer)) + 1 : 1;
         
         const costume = await this.createCostumeFromSrc('../../assets/raccoon.svg');
-        let sizePercentage = 100;
+        let baseScale = 1.0;
 
-        if (costume) {
+        if (costume && name === 'Raccoon') { 
             const maxDim = Math.max(costume.width, costume.height);
-            sizePercentage = (this.defaultSpriteSize / maxDim) * 100;
+            if (maxDim > 0) {
+                 baseScale = this.DEFAULT_SPRITE_DIMENSION / maxDim;
+            }
         }
         
         this.sprites[id] = { 
             id, name: name || `Sprite${count}`, x: 0, y: 0, rotation: 90, 
-            size: sizePercentage,
+            size: 100,
+            baseScale: baseScale,
             visible: true, isClone: false, 
             costume: costume, sayMessage: '', sayTimeout: null, 
-            blocks: {}, localVariables: {}, localLists: {}, layer 
+            blocks: {}, localVariables: {}, localLists: {}, layer, depth: 0,
+            comments: {}
         }; 
-        this.sprites[id].api = this.stage.createApiForSprite(id); 
         this.setActiveSprite(id); 
         this.uiUpdateCallback(); 
         return id; 
@@ -82,6 +97,8 @@ Object.assign(window.Raccoon, {
             return; 
         }
         this.blockContainer.querySelectorAll(`.block[data-sprite-id="${spriteId}"]`).forEach(el => el.remove());
+        this.blockContainer.querySelectorAll(`.comment-container[data-sprite-id="${spriteId}"]`).forEach(el => el.remove());
+        
         if (this.stage.speechBubbles[spriteId]) { 
             this.stage.speechBubbles[spriteId].remove(); 
             delete this.stage.speechBubbles[spriteId]; 
@@ -128,7 +145,7 @@ Object.assign(window.Raccoon, {
         const parentSprite = this.execution.snapshot.sprites[parentId]; 
         if (!parentSprite) return; 
 
-        const { blocks, api, ...propertiesToClone } = parentSprite; 
+        const { blocks, comments, ...propertiesToClone } = parentSprite; 
         const cloneId = `clone_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`; 
         
         const clonedSprite = {
@@ -138,7 +155,6 @@ Object.assign(window.Raccoon, {
              parentId: parentId,
              sayTimeout: null
         };
-        clonedSprite.api = this.stage.createApiForSprite(cloneId, true);
         
         const allDrawable = [...Object.values(this.execution.snapshot.sprites), ...Object.values(this.execution.snapshot.clones)];
         clonedSprite.layer = allDrawable.length > 0 ? Math.max(...allDrawable.map(s => s.layer)) + 1 : 1;
@@ -148,18 +164,19 @@ Object.assign(window.Raccoon, {
         const parentBlocks = this.getAllBlocksForSprite(cloneId, true);
         const cloneStartHats = Object.values(parentBlocks).filter(b => b.type === 'event_when_i_start_as_a_clone' && !b.previous && !b.parentInput);
         cloneStartHats.forEach(hat => { 
-            if (hat.next) this.executeStack(hat.next, cloneId); 
+            if (hat.next) this.executeStack(hat.next, cloneId, true); 
         }); 
         this.uiUpdateCallback(); 
     },
 
     deleteClone(cloneId) { 
-        if (this.execution.snapshot.clones[cloneId]) { 
+        const source = (this.execution.snapshot.clones) ? this.execution.snapshot : this;
+        if (source.clones[cloneId]) { 
             if (this.stage.speechBubbles[cloneId]) { 
                 this.stage.speechBubbles[cloneId].remove(); 
                 delete this.stage.speechBubbles[cloneId]; 
             }
-            delete this.execution.snapshot.clones[cloneId]; 
+            delete source.clones[cloneId]; 
             this.uiUpdateCallback(); 
         } 
     },

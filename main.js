@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleSpriteInfoBtn = document.getElementById('toggle-sprite-info-btn');
     const collapsibleSpriteInfoEl = document.getElementById('collapsible-sprite-info');
     const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const workspaceEl = document.getElementById('workspace');
 
     const spriteInfoPanel = { 
         name: document.getElementById('sprite-name-input'), 
@@ -28,7 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
         size: document.getElementById('sprite-size-input'), 
         direction: document.getElementById('sprite-direction-input'), 
         showBtn: document.getElementById('sprite-show-btn'), 
-        hideBtn: document.getElementById('sprite-hide-btn'), 
+        hideBtn: document.getElementById('sprite-hide-btn'),
+        deleteBtn: document.getElementById('sprite-delete-btn')
     };
     
     function updateAllUI() { 
@@ -47,20 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprite.id === activeSpriteId) item.classList.add('selected'); 
             
             const thumbContainer = document.createElement('div');
-            thumbContainer.style.width = '50px';
-            thumbContainer.style.height = '50px';
-            thumbContainer.style.display = 'flex';
-            thumbContainer.style.alignItems = 'center';
-            thumbContainer.style.justifyContent = 'center';
-            thumbContainer.style.marginBottom = '5px';
+            thumbContainer.className = 'sprite-thumbnail-container';
 
-            if (sprite.costume.bitmap) {
-                const thumb = document.createElement('canvas');
-                thumb.width = 50;
-                thumb.height = 50;
-                const ctx = thumb.getContext('2d');
-                ctx.drawImage(sprite.costume.bitmap, 0, 0, 50, 50);
+            if (sprite.costume && sprite.costume.svgText) {
+                const thumb = document.createElement('img');
                 thumb.className = 'sprite-thumbnail';
+                thumb.src = `data:image/svg+xml;utf8,${encodeURIComponent(sprite.costume.svgText)}`;
                 thumbContainer.appendChild(thumb);
             }
             
@@ -68,13 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name.className = 'item-name'; 
             name.textContent = sprite.name; 
             name.style.wordBreak = 'break-all';
-
-            const deleteIcon = document.createElement('span'); 
-            deleteIcon.className = 'delete-icon'; 
-            deleteIcon.innerHTML = '×'; 
-            deleteIcon.dataset.spriteId = sprite.id; 
             
-            item.appendChild(deleteIcon); 
             item.appendChild(thumbContainer); 
             item.appendChild(name); 
 
@@ -142,41 +130,47 @@ document.addEventListener('DOMContentLoaded', () => {
             .trim();
     }
     
-    function showContextMenu(e, blockId) {
+    function showContextMenu(e, context) {
         e.preventDefault();
         Raccoon.hideContextMenu();
-        const block = Raccoon.getActiveBlocks()[blockId];
-        if (!block) return;
         
-        const deleteLabel = block.next ? "Delete Stack" : "Delete Block";
-        const menuItems = [
-            { label: 'Duplicate', action: () => Raccoon.duplicateStack(block.id, {x:20, y:20}) },
-            { label: deleteLabel, action: () => Raccoon.deleteStack(block.id, block.spriteId) }
-        ];
-    
-        const blockDef = Raccoon.blockDefinitions[block.type];
-        if (blockDef?.spec.switchable?.length > 0) {
-            if (menuItems.length > 0) menuItems.push({ separator: true });
-    
-            blockDef.spec.switchable.forEach(switchableType => {
-                const switchableDef = Raccoon.blockDefinitions[switchableType];
-                if (switchableDef) {
-                    const displayName = getBlockDisplayName(switchableDef.spec);
-                    menuItems.push({
-                        label: `Switch to "${displayName}"`,
-                        action: () => Raccoon.switchBlock(block.id, switchableType)
-                    });
-                }
-            });
+        let menuItems = [];
+        let blockColor = 'var(--accent-color)';
+
+        if (context.type === 'block') {
+            const block = Raccoon.getActiveBlocks()[context.id];
+            if (!block) return;
+            blockColor = `var(--${block.category}-color)`;
+            
+            const deleteLabel = block.next ? "Delete Stack" : "Delete Block";
+            menuItems.push({ label: 'Duplicate', action: () => Raccoon.duplicateStack(block.id, { x: e.clientX, y: e.clientY }, false, true) });
+            menuItems.push({ label: deleteLabel, action: () => Raccoon.deleteStack(block.id, block.spriteId) });
+            menuItems.push({ label: 'Add Comment', action: () => Raccoon.addComment({ x: block.position.x + block.width + 10, y: block.position.y }) });
+
+            const blockDef = Raccoon.blockDefinitions[block.type];
+            if (blockDef?.spec.switchable?.length > 0) {
+                if (menuItems.length > 0) menuItems.push({ separator: true });
+                blockDef.spec.switchable.forEach(switchableType => {
+                    const switchableDef = Raccoon.blockDefinitions[switchableType];
+                    if (switchableDef) {
+                        const displayName = getBlockDisplayName(switchableDef.spec);
+                        menuItems.push({
+                            label: `Switch to "${displayName}"`,
+                            action: () => Raccoon.switchBlock(block.id, switchableType)
+                        });
+                    }
+                });
+            }
+        } else if (context.type === 'workspace') {
+            const virtualPos = Raccoon.screenToVirtual({ x: e.clientX, y: e.clientY });
+            menuItems.push({ label: 'Add Comment', action: () => Raccoon.addComment(virtualPos) });
         }
     
         contextMenuEl.innerHTML = '';
         menuItems.forEach(item => {
             if (item.separator) {
                 const separator = document.createElement('div');
-                separator.style.height = '1px';
-                separator.style.backgroundColor = 'var(--border-color)';
-                separator.style.margin = '4px 6px';
+                separator.className = 'context-menu-separator';
                 contextMenuEl.appendChild(separator);
                 return;
             }
@@ -184,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const menuItemEl = document.createElement('div');
             menuItemEl.className = 'context-menu-item';
             menuItemEl.textContent = item.label;
-            menuItemEl.style.setProperty('--hover-color', `var(--${block.category}-color)`);
+            menuItemEl.style.setProperty('--hover-color', blockColor);
             menuItemEl.addEventListener('mousedown', (evt) => {
                 evt.stopPropagation();
                 item.action();
@@ -207,13 +201,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (specCopy.inputs) {
             if (specCopy.inputs.variable) {
                  const varNames = activeSprite ? [...new Set([...Object.keys(Raccoon.variables), ...Object.keys(activeSprite.localVariables)])] : [...Object.keys(Raccoon.variables)];
-                 if (varNames.length === 0) return null;
+                 if (varNames.length === 0 && spec.type === 'data_variable') return null; // Only return null for variable blocks if no vars exist
                  specCopy.inputs.variable.value = varNames[0] || '';
                  specCopy.inputs.variable.dynamic = true;
             }
             if (specCopy.inputs.list) {
                  const listNames = activeSprite ? [...new Set([...Object.keys(Raccoon.lists), ...Object.keys(activeSprite.localLists)])] : [...Object.keys(Raccoon.lists)];
-                 if (listNames.length === 0) return null;
+                 if (listNames.length === 0 && spec.type === 'data_listcontents') return null; // Only return null for list blocks if no lists exist
                  specCopy.inputs.list.value = listNames[0] || '';
                  specCopy.inputs.list.dynamic = true;
             }
@@ -262,7 +256,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const wrapper = document.createElement('div');
         wrapper.className = 'palette-block-wrapper';
         
+        // Ensure layout is updated BEFORE rendering for palette blocks to calculate width/height
+        Raccoon.updateLayout(specCopy, true); 
         const paletteSvg = Raccoon.renderBlock(specCopy, true);
+        if (!paletteSvg) { // renderBlock might return null if dimensions are invalid even after updateLayout
+            console.warn("Failed to create palette block SVG for spec:", specCopy);
+            return null; 
+        }
         wrapper.appendChild(paletteSvg);
 
         wrapper.addEventListener('mousedown', (e) => {
@@ -375,10 +375,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     addSpriteBtn.addEventListener('click', async () => { await Raccoon.addSprite(); });
 
-    document.getElementById('workspace').addEventListener('contextmenu', (e) => {
+    workspaceEl.addEventListener('contextmenu', (e) => {
         const blockEl = e.target.closest('.block');
         if (blockEl) {
-            showContextMenu(e, blockEl.id);
+            showContextMenu(e, { type: 'block', id: blockEl.id });
+        } else if (!e.target.closest('.comment-container')) {
+            showContextMenu(e, { type: 'workspace' });
         }
     });
     
@@ -403,29 +405,24 @@ document.addEventListener('DOMContentLoaded', () => {
     spriteListEl.addEventListener('click', (e) => { 
         const item = e.target.closest('.sprite-item'); 
         if (!item) return; 
-        const spriteId = item.dataset.spriteId; 
-        if(e.target.classList.contains('delete-icon')) { 
-            if (confirm(`Are you sure you want to delete sprite '${Raccoon.sprites[spriteId].name}'?`)) { 
-                Raccoon.deleteSprite(spriteId); 
-            } 
-        } else { 
-            setActiveSprite(spriteId); 
-        } 
+        setActiveSprite(item.dataset.spriteId); 
     });
 
-    window.addEventListener('keydown', (e) => { 
-        const key = e.key === ' ' ? 'space' : e.key; 
-        Object.values(Raccoon.execution.snapshot.sprites || Raccoon.sprites).forEach(sprite => {
-            const blocks = sprite.blocks;
-            Object.values(blocks).forEach(block => { 
-                if(block.type === 'event_when_key_pressed' && !block.previous && !block.parentInput) { 
-                    const keyToPress = block.inputs.key.value; 
-                    if (keyToPress === 'any' || keyToPress === key) { 
-                        if (block.next) Raccoon.executeStack(block.next, sprite.id); 
-                    } 
-                } 
-            }); 
-        }); 
+    window.addEventListener('keydown', (e) => {
+        if (Object.keys(Raccoon.execution.snapshot).length === 0) return;
+
+        const key = e.key === ' ' ? 'space' : e.key;
+        Object.values(Raccoon.execution.snapshot.sprites).forEach(sprite => {
+            const blocks = Raccoon.getAllBlocksForSprite(sprite.id, true);
+            Object.values(blocks).forEach(block => {
+                if (block.type === 'event_when_key_pressed' && !block.previous && !block.parentInput) {
+                    const keyToPress = block.inputs.key.value;
+                    if (keyToPress === 'any' || keyToPress === key) {
+                        if (block.next) Raccoon.executeStack(block.next, sprite.id, true);
+                    }
+                }
+            });
+        });
     });
 
     modalOkBtn.addEventListener('click', handleCreateData);
@@ -442,6 +439,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     spriteInfoPanel.showBtn.addEventListener('click', () => { const sprite = Raccoon.getActiveSprite(); if(sprite) { sprite.visible = true; updateAllUI(); } });
     spriteInfoPanel.hideBtn.addEventListener('click', () => { const sprite = Raccoon.getActiveSprite(); if(sprite) { sprite.visible = false; updateAllUI(); } });
+    spriteInfoPanel.deleteBtn.addEventListener('click', () => { 
+        const sprite = Raccoon.getActiveSprite();
+        if (sprite && confirm(`Are you sure you want to delete sprite '${sprite.name}'?`)) {
+            Raccoon.deleteSprite(sprite.id);
+        }
+    });
     
     async function initialize() {
         collapsibleSpriteInfoEl.classList.remove('collapsed');

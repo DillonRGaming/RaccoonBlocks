@@ -1,17 +1,15 @@
 Object.assign(window.Raccoon, {
     showColorPicker(triggerEl, blockOrId, inputKey, isPalette) {
-        this.hideColorPicker();
-        this.hideDropdown();
-        this.hideSliderInput();
+        this.hideAllPopovers();
 
-        let block = isPalette ? blockOrId : this.getAllBlocksForSprite(this.activeSpriteId)[blockOrId];
+        let block = isPalette ? blockOrId : this.getActiveBlocks()[blockOrId];
         if (!block || !block.inputs || !block.inputs[inputKey]) return;
 
         const input = block.inputs[inputKey];
 
         const picker = document.createElement('div');
         picker.className = 'color-picker';
-        picker.dataset.colorPicker = 'true';
+        picker.dataset.popover = 'true';
         picker.addEventListener('mousedown', e => e.stopPropagation());
 
         const main = document.createElement('div'); main.className = 'color-picker-main';
@@ -66,32 +64,32 @@ Object.assign(window.Raccoon, {
     },
     
     showDropdown(triggerEl, blockOrId, inputKey, isPalette) {
-        this.hideDropdown();
-        this.hideColorPicker();
-        this.hideSliderInput();
+        this.hideAllPopovers();
     
-        let block = isPalette ? blockOrId : this.getAllBlocksForSprite(this.activeSpriteId)[blockOrId];
+        const getBlock = () => isPalette ? blockOrId : this.getActiveBlocks()[blockOrId];
+        
+        let block = getBlock();
         if (!block || !block.inputs || !block.inputs[inputKey]) return;
-    
-        const input = block.inputs[inputKey];
-        const menu = document.createElement('div');
-        menu.className = 'dropdown-menu';
-        menu.dataset.dropdownMenu = 'true';
-    
-        let options = input.options || [];
-        if (input.dynamic) {
+        
+        if (block.inputs[inputKey].dynamic && !isPalette) {
             this.updateLayout(block, isPalette);
-            options = block.inputs[inputKey].options;
+            block = getBlock();
         }
+        const input = block.inputs[inputKey];
+        const options = input.options || [];
     
         if (options.length === 0) return;
     
-        if (options.length > 5) {
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-menu';
+        menu.dataset.popover = 'true';
+        menu.addEventListener('mousedown', e => e.stopPropagation());
+    
+        if (options.length > 8) {
             const searchInput = document.createElement('input');
             searchInput.type = 'text';
             searchInput.className = 'dropdown-search-input';
             searchInput.placeholder = 'Search...';
-            searchInput.addEventListener('mousedown', e => e.stopPropagation());
             searchInput.addEventListener('input', e => {
                 const searchTerm = e.target.value.toLowerCase();
                 menu.querySelectorAll('.dropdown-item').forEach(itemEl => {
@@ -110,9 +108,22 @@ Object.assign(window.Raccoon, {
             item.textContent = option.label;
             item.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
-                input.value = option.value;
+                
+                const currentBlock = getBlock();
+                if(!currentBlock) return;
+                
+                currentBlock.inputs[inputKey].value = option.value;
+    
                 if (!isPalette) {
-                    this.updateBlockPositions(this.getStackRoot(block.id, block.spriteId)?.id);
+                    this.updateBlockPositions(this.getStackRoot(currentBlock.id, currentBlock.spriteId)?.id || currentBlock.id);
+                } else {
+                    const paletteBlockWrapper = triggerEl.closest('.palette-block-wrapper');
+                    if(paletteBlockWrapper) {
+                        this.updateLayout(currentBlock, true);
+                        const newSvg = this.renderBlock(currentBlock, true);
+                        paletteBlockWrapper.innerHTML = '';
+                        if(newSvg) paletteBlockWrapper.appendChild(newSvg);
+                    }
                 }
                 this.hideDropdown();
             });
@@ -125,15 +136,22 @@ Object.assign(window.Raccoon, {
         menu.style.left = `${triggerRect.left}px`;
         menu.style.top = `${triggerRect.bottom + 5}px`;
         menu.style.minWidth = `${triggerRect.width}px`;
+    
+        const menuRect = menu.getBoundingClientRect();
+        if (menuRect.bottom > window.innerHeight) {
+            menu.style.top = `${triggerRect.top - menuRect.height - 5}px`;
+        }
+        if (menuRect.right > window.innerWidth) {
+            menu.style.left = `${window.innerWidth - menuRect.width - 5}px`;
+        }
+    
         menu.querySelector('.dropdown-search-input')?.focus();
     },
 
     showSliderInput(triggerEl, blockOrId, inputKey, isPalette) {
-        this.hideSliderInput();
-        this.hideDropdown();
-        this.hideColorPicker();
+        this.hideAllPopovers();
     
-        let block = isPalette ? blockOrId : this.getAllBlocksForSprite(this.activeSpriteId)[blockOrId];
+        let block = isPalette ? blockOrId : this.getActiveBlocks()[blockOrId];
         if (!block || !block.inputs || !block.inputs[inputKey]) return;
     
         const input = block.inputs[inputKey];
@@ -143,7 +161,7 @@ Object.assign(window.Raccoon, {
     
         const sliderContainer = document.createElement('div');
         sliderContainer.className = 'block-slider';
-        sliderContainer.dataset.blockSlider = 'true';
+        sliderContainer.dataset.popover = 'true';
         sliderContainer.addEventListener('mousedown', e => e.stopPropagation());
     
         const rangeInput = document.createElement('input');
@@ -177,9 +195,123 @@ Object.assign(window.Raccoon, {
         rangeInput.focus();
     }, 
 
-    hideDropdown() { document.querySelectorAll('[data-dropdown-menu="true"]').forEach(el => el.remove()); },
-    hideColorPicker() { document.querySelectorAll('[data-color-picker="true"]').forEach(el => el.remove()); },
-    hideSliderInput() { document.querySelectorAll('[data-block-slider="true"]').forEach(el => el.remove()); },
-    hideReporterOutput() { const r = document.getElementById('reporter-output'); if (r) r.style.display = 'none'; },
+    addComment(position) {
+        const sprite = this.getActiveSprite();
+        if (!sprite) return;
+        const id = `comment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const commentData = {
+            id,
+            spriteId: sprite.id,
+            position,
+            title: "Comment",
+            text: "",
+            width: 150,
+            height: 100,
+        };
+        sprite.comments[id] = commentData;
+        this.renderComment(commentData);
+    },
+
+    deleteComment(commentId) {
+        const sprite = this.getActiveSprite();
+        if (sprite && sprite.comments[commentId]) {
+            document.getElementById(commentId)?.remove();
+            delete sprite.comments[commentId];
+        }
+    },
+
+    renderComment(commentData) {
+        let el = document.getElementById(commentData.id);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = commentData.id;
+            el.className = 'comment-container';
+            el.dataset.spriteId = commentData.spriteId;
+            el.style.left = `${commentData.position.x}px`;
+            el.style.top = `${commentData.position.y}px`;
+            el.style.width = `${commentData.width}px`;
+            el.style.height = `${commentData.height}px`;
+
+            const header = document.createElement('div');
+            header.className = 'comment-header';
+
+            const titleInput = document.createElement('input');
+            titleInput.type = 'text';
+            titleInput.className = 'comment-title';
+            titleInput.value = commentData.title;
+            titleInput.addEventListener('input', e => { commentData.title = e.target.value; });
+            titleInput.addEventListener('mousedown', e => e.stopPropagation());
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'comment-delete-btn';
+            deleteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            deleteBtn.title = "Delete Comment";
+            deleteBtn.addEventListener('mousedown', e => {
+                e.stopPropagation();
+                this.deleteComment(commentData.id);
+            });
+
+            const body = document.createElement('textarea');
+            body.className = 'comment-body';
+            body.value = commentData.text;
+            
+            const autoResize = () => {
+                body.style.height = 'auto';
+                const newHeight = Math.max(50, body.scrollHeight);
+                body.style.height = `${newHeight}px`;
+                el.style.height = `${header.offsetHeight + newHeight + 16}px`;
+                commentData.height = el.offsetHeight;
+            };
+
+            body.addEventListener('input', () => {
+                commentData.text = body.value;
+                autoResize();
+            });
+            body.addEventListener('mousedown', e => e.stopPropagation());
+
+            header.append(titleInput, deleteBtn);
+            el.append(header, body);
+            this.blockContainer.appendChild(el);
+            autoResize();
+
+            let isDragging = false;
+            let dragOffsetX, dragOffsetY;
+            header.addEventListener('mousedown', e => {
+                if (e.target.closest('.comment-title, .comment-delete-btn')) return;
+                e.stopPropagation();
+                isDragging = true;
+                const virtualPos = this.screenToVirtual({x: e.clientX, y: e.clientY});
+                dragOffsetX = virtualPos.x - commentData.position.x;
+                dragOffsetY = virtualPos.y - commentData.position.y;
+                el.style.zIndex = 1001;
+            });
+            window.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                const virtualPos = this.screenToVirtual({x: e.clientX, y: e.clientY});
+                commentData.position.x = virtualPos.x - dragOffsetX;
+                commentData.position.y = virtualPos.y - dragOffsetY;
+                el.style.left = `${commentData.position.x}px`;
+                el.style.top = `${commentData.position.y}px`;
+            });
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+                el.style.zIndex = 500;
+            });
+        }
+    },
+
+    hideAllPopovers() {
+        document.querySelectorAll('[data-popover="true"]').forEach(el => el.remove());
+    },
+    hideDropdown() { document.querySelectorAll('.dropdown-menu').forEach(el => el.remove()); },
+    hideColorPicker() { document.querySelectorAll('.color-picker').forEach(el => el.remove()); },
+    hideSliderInput() { document.querySelectorAll('.block-slider').forEach(el => el.remove()); },
+    hideReporterOutput(blockId = null) { 
+        const r = document.getElementById('reporter-output'); 
+        if (r && (blockId === null || r.dataset.blockId === blockId)) {
+            r.style.display = 'none'; 
+            r.removeAttribute('data-block-id');
+        }
+    },
     hideContextMenu() { const menu = document.getElementById('context-menu'); if (menu) menu.style.display = 'none'; },
 });

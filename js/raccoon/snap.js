@@ -84,7 +84,7 @@ Object.assign(window.Raccoon, {
         
         const draggedIsC = draggedBlock.shape.startsWith('c_shape');
         const draggedIsStackable = ['stack', 'c_shape'].includes(draggedBlock.shape);
-        const draggedIsReporterBoolean = ['reporter', 'boolean'].includes(draggedBlock.outputType);
+        const draggedIsReporterBoolean = ['reporter', 'boolean'].includes(draggedBlock.outputType) || ['reporter.leaf', 'reporter.square'].includes(draggedBlock.shape);
         
         const draggedRect = { left: draggedBlock.position.x, top: draggedBlock.position.y, height: draggedBlock.height, width: draggedBlock.width };
         let closestSnap = { distance: this.snapThreshold + 10, target: null }; 
@@ -140,7 +140,7 @@ Object.assign(window.Raccoon, {
                     let itemWidth = 0;
                     if (item.type === 'input' || item.type === 'dropdown') {
                         const inputData = targetBlock.inputs[item.key];
-                        if (inputData && !inputData.blockId && draggedBlock.shape === inputData.shape) {
+                        if (inputData && !inputData.blockId && (draggedBlock.shape === inputData.shape || draggedBlock.outputType === inputData.shape)) {
                             const dist = Math.hypot(draggedRect.left - (targetRect.left + xOffset), draggedRect.top - (targetRect.top + contentVCenter - (draggedBlock.height / 2)));
                             if (dist < closestSnap.distance) {
                                 closestSnap = { distance: dist, target: { type: 'input', blockId, inputKey: item.key } };
@@ -173,7 +173,10 @@ Object.assign(window.Raccoon, {
 
     clearLiveSnapFeedback() {
         if (this.dragState.draggedBlockId) {
-             document.getElementById(this.dragState.draggedBlockId)?.classList.remove('can-snap');
+            const draggedStack = this.getStackAndDescendants(this.dragState.draggedBlockId);
+            draggedStack.forEach(b => {
+                 document.getElementById(b.id)?.classList.remove('can-snap');
+            });
         }
 
         if (this.dragState.lastSnapHighlight) {
@@ -208,7 +211,10 @@ Object.assign(window.Raccoon, {
         const draggedBlock = allBlocks[this.dragState.draggedBlockId];
         if (!draggedBlock) return;
 
-        document.getElementById(draggedBlock.id)?.classList.add('can-snap');
+        const draggedStack = this.getStackAndDescendants(draggedBlock.id);
+        draggedStack.forEach(b => {
+            document.getElementById(b.id)?.classList.add('can-snap');
+        });
         
         const targetBlock = allBlocks[snapTarget.blockId || snapTarget.prevBlockId || snapTarget.targetStackId];
         if (!targetBlock) return; 

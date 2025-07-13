@@ -8,6 +8,9 @@ window.Raccoon = {
     lists: {},
 
     snapThreshold: 40,
+    REPORTER_BUBBLE_LIFETIME: 1500,
+    EMPTY_BOOLEAN_INPUT_WIDTH: 40,
+    DEFAULT_SPRITE_DIMENSION: 90,
 
     view: { 
         x: 0, 
@@ -54,8 +57,6 @@ window.Raccoon = {
         isDown: false 
     },
     keys: new Set(),
-    
-    defaultSpriteSize: 90,
 
     registerCategory(category) {
         this.categoryData[category.id] = { 
@@ -94,19 +95,15 @@ window.Raccoon = {
     },
 
     getAllBlocksForSprite(spriteId, useSnapshot = false) {
-        const spriteSource = useSnapshot ? this.execution.snapshot.sprites : this.sprites;
-        const cloneSource = useSnapshot ? this.execution.snapshot.clones : this.clones;
-        
-        let sprite = spriteSource ? spriteSource[spriteId] : null;
-        if (!sprite && cloneSource) {
-            sprite = cloneSource[spriteId];
-        }
-
+        const source = useSnapshot ? this.execution.snapshot : this;
+        const sprite = source.sprites[spriteId] || source.clones[spriteId];
         if (!sprite) return {};
 
         const parentId = sprite.isClone ? sprite.parentId : sprite.id;
-        const parentSprite = spriteSource[parentId];
-        return parentSprite ? parentSprite.blocks : {};
+        if (!source.sprites[parentId]) return {};
+        const parentSprite = source.sprites[parentId];
+        
+        return parentSprite.blocks;
     },
 
     getStackRoot(blockId, spriteId) {
@@ -134,13 +131,42 @@ window.Raccoon = {
         let height = 0;
         let current = startBlock;
         const visited = new Set();
-        while(current && !visited.has(current.id)) {
+        while (current && !visited.has(current.id)) {
             visited.add(current.id);
-            this.updateLayout(current, false); 
-            height += current.height || 40;
+            height += current.height || 40; 
             current = current.next ? allBlocks[current.next] : null;
         }
         return height;
+    },
+    
+    getStackAndDescendants(startBlockId) {
+        const sprite = this.getActiveSprite();
+        if (!sprite) return [];
+
+        const stack = [];
+        const queue = [startBlockId];
+        const visited = new Set();
+        
+        while(queue.length > 0) {
+            const currentId = queue.shift();
+            if(visited.has(currentId)) continue;
+            visited.add(currentId);
+            
+            const currentBlock = sprite.blocks[currentId];
+            if(!currentBlock) continue;
+            
+            stack.push(currentBlock); 
+            
+            if (currentBlock.next) queue.push(currentBlock.next);
+            if (currentBlock.child) queue.push(currentBlock.child);
+            if (currentBlock.child2) queue.push(currentBlock.child2);
+            if (currentBlock.inputs) {
+                Object.values(currentBlock.inputs).forEach(input => {
+                    if (input.blockId) queue.push(input.blockId);
+                });
+            }
+        }
+        return stack;
     },
 
     async init(workspaceElement) {
@@ -152,7 +178,7 @@ window.Raccoon = {
         window.addEventListener('mouseup', this.dragEnd.bind(this));
         
         document.body.addEventListener('mousedown', (e) => {
-            if (!e.target.closest('.dropdown-trigger, .modal-content, .color-picker, .block-slider')) {
+            if (!e.target.closest('.dropdown-trigger, .dropdown-menu, .modal-content, .color-picker, .block-slider')) {
                 this.hideDropdown(); this.hideColorPicker(); this.hideSliderInput();
             }
             if (!e.target.closest('.block, .palette-block-wrapper, .reporter-output')) {
@@ -167,7 +193,6 @@ window.Raccoon = {
         const workspaceRect = this.workspace.getBoundingClientRect();
         this.view.x = workspaceRect.width / 4;
         this.view.y = workspaceRect.height / 4;
-        this.updateViewTransform();
 
         window.addEventListener('mousedown', () => { this.mouse.isDown = true; });
         window.addEventListener('mouseup', () => { this.mouse.isDown = false; });
@@ -175,10 +200,13 @@ window.Raccoon = {
         window.addEventListener('keyup', e => { this.keys.delete(e.key === ' ' ? 'space' : e.key); });
 
         await this.addSprite('Raccoon');
+        
+        this.updateViewTransform();
     },
 
     handleZoom(event) { 
         event.preventDefault(); 
+        this.hideReporterOutput();
         const zoomSpeed = 0.05, minZoom = 0.4, maxZoom = 2.5; 
         const virtualMousePos = this.screenToVirtual({ x: event.clientX, y: event.clientY }); 
         

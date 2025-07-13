@@ -1,6 +1,7 @@
 Object.assign(window.Raccoon, {
-    async evaluateReporter(blockId, spriteId) {
-        const blocks = this.getAllBlocksForSprite(spriteId, true);
+    async evaluateReporter(blockId, spriteId, useSnapshot = true) {
+        const source = useSnapshot ? this.execution.snapshot : this;
+        const blocks = this.getAllBlocksForSprite(spriteId, useSnapshot);
         const block = blocks[blockId];
         if (!block || !block.outputType) return null;
 
@@ -13,45 +14,71 @@ Object.assign(window.Raccoon, {
         if (block.inputs) {
             for (const key in block.inputs) {
                 const input = block.inputs[key];
-                args[key] = input.blockId ? await this.evaluateReporter(input.blockId, spriteId) : input.value;
+                if (input.blockId) {
+                    args[key] = await this.evaluateReporter(input.blockId, spriteId, useSnapshot);
+                } else {
+                    args[key] = input.value;
+                }
             }
         }
-        const sprite = this.execution.snapshot.sprites[spriteId] || this.execution.snapshot.clones[spriteId];
-        return await blockDef.onExecute(args, sprite.api);
+        
+        const api = this.stage.createApiForSprite(spriteId, useSnapshot);
+        return await blockDef.onExecute(args, api);
     },
 
     async evaluateAndDisplayReporter(blockId, spriteId) {
         const outputEl = this.stage.reporterOutputEl;
-        this.execution.snapshot = { sprites: this.sprites, clones: this.clones }; // Use live data for single clicks
-        const value = await this.evaluateReporter(blockId, spriteId);
-        this.execution.snapshot = {}; // Clear snapshot
-        
-        outputEl.textContent = String(value);
-        outputEl.style.display = 'block';
-        
-        const blockEl = document.getElementById(blockId);
-        if (blockEl) {
-            const rect = blockEl.getBoundingClientRect();
-            outputEl.style.left = `${rect.left + rect.width / 2}px`;
-            outputEl.style.top = `${rect.bottom + 8}px`;
+        const block = this.getActiveBlocks()[blockId];
+        if (!block) return;
+    
+        const originalSnapshot = this.execution.snapshot;
+        this.execution.snapshot = this.deepCloneForExecution(this);
+    
+        try {
+            const value = await this.evaluateReporter(blockId, spriteId, true);
+            const isBoolean = typeof value === 'boolean';
+            
+            outputEl.innerHTML = '';
+            outputEl.className = isBoolean ? 'reporter-output has-boolean' : 'reporter-output';
+            
+            const bubble = document.createElement('div');
+            bubble.textContent = String(value);
+            bubble.className = isBoolean ? 'boolean-bubble' : 'reporter-bubble';
+            
+            const bubbleColor = `var(--${block.category}-color)`;
+            outputEl.style.setProperty('--bubble-color', bubbleColor);
+    
+            outputEl.appendChild(bubble);
+            outputEl.style.display = 'block';
+            
+            const blockEl = document.getElementById(blockId);
+            if (blockEl) {
+                const rect = blockEl.getBoundingClientRect();
+                outputEl.style.left = `${rect.left + rect.width / 2}px`;
+                outputEl.style.top = `${rect.bottom}px`;
+                outputEl.dataset.blockId = blockId;
+            }
+            
+            setTimeout(() => this.hideReporterOutput(blockId), this.REPORTER_BUBBLE_LIFETIME);
+        } finally {
+            this.execution.snapshot = originalSnapshot;
         }
-        
-        setTimeout(() => this.hideReporterOutput(), 1500);
     },
-
-    async executeStack(startBlockId, spriteId) {
+    
+    async executeStack(startBlockId, spriteId, useSnapshot = false) {
         const stackId = `${spriteId}-${startBlockId}`;
-        if (this.execution.runningStacks.has(stackId)) return; 
+        if (this.execution.runningStacks.has(stackId) && useSnapshot) return; 
 
         const controller = { stop: false };
-        this.execution.runningStacks.set(stackId, controller);
+        if (useSnapshot) {
+            this.execution.runningStacks.set(stackId, controller);
+        }
         
         let currentBlockId = startBlockId;
-        const blocks = this.getAllBlocksForSprite(spriteId, true);
-        const sprite = this.execution.snapshot.sprites[spriteId] || this.execution.snapshot.clones[spriteId];
+        const blocks = this.getAllBlocksForSprite(spriteId, useSnapshot);
 
-        const executeChildStack = async (id) => this.executeStack(id, spriteId);
-        const checkIfStopping = () => this.execution.isStopping || controller.stop;
+        const executeChildStack = (id) => this.executeStack(id, spriteId, useSnapshot);
+        const checkIfStopping = () => useSnapshot && (this.execution.isStopping || controller.stop);
 
         while(currentBlockId && !checkIfStopping()) {
             const block = blocks[currentBlockId];
@@ -67,15 +94,17 @@ Object.assign(window.Raccoon, {
                 if (block.inputs) {
                     for (const key in block.inputs) {
                         const input = block.inputs[key];
-                        args[key] = input.blockId ? await this.evaluateReporter(input.blockId, spriteId) : input.value;
+                        args[key] = input.blockId ? await this.evaluateReporter(input.blockId, spriteId, useSnapshot) : input.value;
                     }
                 }
                 if (block.child) args.child = block.child;
                 if (block.child2) args.child2 = block.child2;
-
-                await blockDef.onExecute(args, sprite.api, { execute: executeChildStack, isStopping: checkIfStopping });
+                
+                const api = this.stage.createApiForSprite(spriteId, useSnapshot);
+                await blockDef.onExecute(args, api, { execute: executeChildStack, isStopping: checkIfStopping });
 
             } catch (e) {
+                console.error(`Execution error in block ${block.id} (${block.type}):`, e);
                 const blockEl = document.getElementById(block.id);
                 if (blockEl) blockEl.classList.add('is-errored');
                 break;
@@ -85,7 +114,9 @@ Object.assign(window.Raccoon, {
             currentBlockId = block.next;
         }
         
-        this.execution.runningStacks.delete(stackId);
+        if (useSnapshot) {
+            this.execution.runningStacks.delete(stackId);
+        }
     },
 
     start() {
@@ -96,12 +127,11 @@ Object.assign(window.Raccoon, {
         this.execution.snapshot = this.deepCloneForExecution(this);
         
         for (const sId in this.execution.snapshot.sprites) {
-            const sprite = this.execution.snapshot.sprites[sId];
-            const blocks = sprite.blocks;
+            const blocks = this.getAllBlocksForSprite(sId, true);
             for (const blockId in blocks) {
                 const block = blocks[blockId];
                 if (block.type === 'event_when_flag_clicked' && !block.previous && !block.parentInput) {
-                    if (block.next) this.executeStack(block.next, sId);
+                    if (block.next) this.executeStack(block.next, sId, true);
                 }
             }
         }
@@ -110,46 +140,18 @@ Object.assign(window.Raccoon, {
     deepCloneForExecution(engine) {
         const clone = { sprites: {}, clones: {}, variables: {}, lists: {} };
 
-        // Clone global variables and lists
-        for (const key in engine.variables) {
-            clone.variables[key] = { ...engine.variables[key] };
-        }
-        for (const key in engine.lists) {
-            clone.lists[key] = { ...engine.lists[key], value: [...engine.lists[key].value] };
-        }
+        clone.variables = JSON.parse(JSON.stringify(engine.variables));
+        clone.lists = JSON.parse(JSON.stringify(engine.lists));
 
-        // Clone sprites
         for (const spriteId in engine.sprites) {
             const originalSprite = engine.sprites[spriteId];
-            const { costume, localVariables, localLists, ...restOfSprite } = originalSprite;
-            
-            const clonedSprite = {
-                ...restOfSprite,
-                costume: { // only clone necessary data, not the full DOM element
-                    svgText: costume.svgText,
-                    bitmap: costume.bitmap,
-                    width: costume.width,
-                    height: costume.height,
-                },
-                localVariables: {},
-                localLists: {},
-                api: {} // API will be re-assigned later
-            };
-
-            for (const key in localVariables) {
-                clonedSprite.localVariables[key] = { ...localVariables[key] };
-            }
-            for (const key in localLists) {
-                clonedSprite.localLists[key] = { ...localLists[key], value: [...localLists[key].value] };
-            }
-            
+            const { costume, ...serializableData } = originalSprite;
+            const clonedSprite = JSON.parse(JSON.stringify(serializableData));
+            clonedSprite.costume = costume; 
             clone.sprites[spriteId] = clonedSprite;
         }
-
-        // Re-assign API to cloned sprites
-        for (const spriteId in clone.sprites) {
-            clone.sprites[spriteId].api = engine.stage.createApiForSprite(spriteId, true);
-        }
+        
+        clone.clones = {};
 
         return clone;
     },
@@ -162,6 +164,7 @@ Object.assign(window.Raccoon, {
         setTimeout(() => { 
             this.execution.isStopping = false; 
             this.execution.snapshot = {};
+            this.uiUpdateCallback();
         }, 100); 
     },
 });

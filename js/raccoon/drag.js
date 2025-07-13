@@ -6,7 +6,8 @@ Object.assign(window.Raccoon, {
             this.view.isPanning = true; 
             this.workspace.classList.add('panning'); 
             this.view.panStartX = event.clientX - this.view.x; 
-            this.view.panStartY = event.clientY - this.view.y; 
+            this.view.panStartY = event.clientY - this.view.y;
+            this.hideReporterOutput(); 
         } 
     },
     
@@ -42,7 +43,7 @@ Object.assign(window.Raccoon, {
         }
     },
     
-    dragEnd(event) {
+    async dragEnd(event) {
         this.clearLiveSnapFeedback();
         if (this.view.isPanning) {
             this.view.isPanning = false;
@@ -50,8 +51,14 @@ Object.assign(window.Raccoon, {
         } else if (this.dragState.isDragging) {
             const { draggedBlockId, draggedSpriteId } = this.dragState;
             
-            const rootBlockEl = document.getElementById(draggedBlockId);
-            if (rootBlockEl) rootBlockEl.classList.remove('dragging');
+            const draggedStack = this.getStackAndDescendants(draggedBlockId);
+            draggedStack.forEach(b => {
+                const el = document.getElementById(b.id);
+                if (el) {
+                    el.classList.remove('dragging');
+                    el.style.zIndex = b.depth || 0;
+                }
+            });
 
             const paletteEl = document.getElementById('left-sidebar');
             const paletteRect = paletteEl.getBoundingClientRect();
@@ -69,9 +76,9 @@ Object.assign(window.Raccoon, {
                 
                 if (block && !this.dragState.didMove) {
                     if (block.outputType) {
-                        this.evaluateAndDisplayReporter(draggedBlockId, draggedSpriteId);
+                        await this.evaluateAndDisplayReporter(draggedBlockId, draggedSpriteId);
                     } else if (block.shape !== 'hat') {
-                        this.executeStack(block.id, draggedSpriteId);
+                        await this.executeStack(block.id, draggedSpriteId, false);
                     }
                 }
             }
@@ -99,31 +106,14 @@ Object.assign(window.Raccoon, {
         this.unsnap(blockId);
         this.clearLiveSnapFeedback();
 
-        const stackToLift = [];
-        let queue = [blockId];
-        const visited = new Set();
-        
-        while(queue.length > 0) {
-            const currentId = queue.shift();
-            if(visited.has(currentId)) continue;
-            visited.add(currentId);
-            const currentBlock = this.getActiveBlocks()[currentId];
-            if(!currentBlock) continue;
-            stackToLift.push(currentBlock); 
-            if (currentBlock.next) queue.push(currentBlock.next);
-            if (currentBlock.child) queue.push(currentBlock.child);
-            if (currentBlock.child2) queue.push(currentBlock.child2);
-            if (currentBlock.inputs) {
-                Object.values(currentBlock.inputs).forEach(input => {
-                    if (input.blockId) queue.push(input.blockId);
-                });
-            }
-        }
+        const stackToLift = this.getStackAndDescendants(blockId);
+        const stackRoot = this.getStackRoot(blockId, block.spriteId) || block;
         
         stackToLift.forEach(b => {
             const el = document.getElementById(b.id);
             if (el) {
-                el.classList.add('dragging'); 
+                el.classList.add('dragging');
+                el.style.zIndex = 1000 + (b.depth - stackRoot.depth);
             }
         });
         

@@ -89,21 +89,21 @@ const MOTION_CATEGORY = {
         },
         'motion_xposition': {
             spec: {
-                shape: 'reporter', outputType: 'reporter', monitorLabel: 'x position',
+                shape: 'reporter.leaf', outputType: 'reporter', monitorLabel: 'x position',
                 layout: [{type: 'monitor'}, {type: 'label', text: 'x position'}]
             },
             onExecute: (args, api) => api.getX()
         },
         'motion_yposition': {
             spec: {
-                shape: 'reporter', outputType: 'reporter', monitorLabel: 'y position',
+                shape: 'reporter.octagon', outputType: 'reporter', monitorLabel: 'y position',
                 layout: [{type: 'monitor'}, {type: 'label', text: 'y position'}]
             },
             onExecute: (args, api) => api.getY()
         },
         'motion_direction': {
             spec: {
-                shape: 'reporter', outputType: 'reporter', monitorLabel: 'direction',
+                shape: 'reporter.square', outputType: 'reporter', monitorLabel: 'direction',
                 layout: [{type: 'monitor'}, {type: 'label', text: 'direction'}]
             },
             onExecute: (args, api) => api.getDirection()

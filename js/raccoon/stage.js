@@ -41,9 +41,9 @@ window.Raccoon.stage = {
 
     async render() {
         if (!this.ctx || !this.monitorContainerEl) return;
-        const source = Raccoon.execution.isStopping ? {sprites: {}, clones: {}} : (Raccoon.execution.snapshot.sprites ? Raccoon.execution.snapshot : Raccoon);
+        const source = (Raccoon.execution.isStopping || !Object.keys(Raccoon.execution.snapshot).length) ? Raccoon : Raccoon.execution.snapshot;
         
-        let html = '';
+        const allMonitors = [];
         const allSpritesAndClones = { ...source.sprites, ...source.clones };
 
         for (const sId in allSpritesAndClones) {
@@ -57,9 +57,11 @@ window.Raccoon.stage = {
                 if (v && v.visible) {
                     const isLocal = (sprite.localVariables && sprite.localVariables.hasOwnProperty(varName));
                     if (isClone && isLocal) continue; 
-                    const label = isLocal ? `${sprite.name}: ${varName}` : varName;
-                    const colorVar = `var(--data-color)`;
-                    html += `<div class="reporter-monitor" style="border-color: ${colorVar};"><span class="monitor-label">${label}:</span><span class="monitor-value" style="background-color: ${colorVar};">${v.value}</span></div>`;
+                    allMonitors.push({
+                        label: isLocal ? `${sprite.name}: ${varName}` : varName,
+                        value: v.value,
+                        color: 'var(--data-color)'
+                    });
                 }
             }
 
@@ -68,25 +70,35 @@ window.Raccoon.stage = {
                 const l = (sprite.localLists && sprite.localLists.hasOwnProperty(listName)) ? sprite.localLists[listName] : source.lists[listName];
                 if (l && l.visible) {
                     const isLocal = (sprite.localLists && sprite.localLists.hasOwnProperty(listName));
-                    if (isClone && isLocal) continue; 
-                    const label = isLocal ? `${sprite.name}: ${listName}` : listName;
-                    const colorVar = `var(--lists-color)`;
-                    html += `<div class="reporter-monitor" style="border-color: ${colorVar};"><span class="monitor-label">${label}:</span><span class="monitor-value" style="background-color: ${colorVar};">${l.value.join(' ')}</span></div>`;
+                    if (isClone && isLocal) continue;
+                     allMonitors.push({
+                        label: isLocal ? `${sprite.name}: ${listName}` : listName,
+                        value: l.value.join(' '),
+                        color: 'var(--lists-color)'
+                    });
                 }
             }
 
-            const blocks = Raccoon.getAllBlocksForSprite(sId);
+            const useSnapshotForMonitors = !Raccoon.execution.isStopping && Object.keys(Raccoon.execution.snapshot).length > 0;
+            const blocks = Raccoon.getAllBlocksForSprite(sId, useSnapshotForMonitors);
             for (const block of Object.values(blocks)) {
                 if (block.monitored && block.outputType) {
-                    const value = await Raccoon.evaluateReporter(block.id, sId);
+                    const value = await Raccoon.evaluateReporter(block.id, sId, useSnapshotForMonitors);
                     const blockDef = Raccoon.blockDefinitions[block.type]?.spec || {};
                     const label = block.monitorLabel || blockDef.monitorLabel || block.type;
-                    const colorVar = `var(--${block.category}-color)`;
-                    html += `<div class="reporter-monitor" style="border-color: ${colorVar};"><span class="monitor-label">${label}:</span><span class="monitor-value" style="background-color: ${colorVar};">${value}</span></div>`;
+                    allMonitors.push({
+                        label: label,
+                        value: value,
+                        color: `var(--${block.category}-color)`
+                    });
                 }
             }
         }
-        this.monitorContainerEl.innerHTML = html;
+        
+        this.monitorContainerEl.innerHTML = allMonitors.map(m => 
+            `<div class="reporter-monitor" style="border-color: ${m.color};"><span class="monitor-label">${m.label}:</span><span class="monitor-value" style="background-color: ${m.color};">${m.value}</span></div>`
+        ).join('');
+
 
         requestAnimationFrame(() => {
             if (!this.ctx) return;
@@ -109,8 +121,11 @@ window.Raccoon.stage = {
                 this.ctx.translate(drawX, drawY);
                 const angleRad = (sprite.rotation - 90) * Math.PI / 180;
                 this.ctx.rotate(angleRad);
-                const currentWidth = sprite.costume.width * (sprite.size / 100);
-                const currentHeight = sprite.costume.height * (sprite.size / 100);
+                
+                const baseScale = sprite.baseScale || 1.0;
+                const currentWidth = sprite.costume.width * baseScale * (sprite.size / 100);
+                const currentHeight = sprite.costume.height * baseScale * (sprite.size / 100);
+
                 this.ctx.drawImage(sprite.costume.bitmap, -currentWidth / 2, -currentHeight / 2, currentWidth, currentHeight);
                 this.ctx.restore();
             });
@@ -122,7 +137,7 @@ window.Raccoon.stage = {
                     const spriteCanvasX = centerX + (sprite.x - this.view.x) * this.view.zoom;
                     const spriteCanvasY = centerY - (sprite.y - this.view.y) * this.view.zoom;
                     const costumeHeight = sprite.costume ? sprite.costume.height : 50;
-                    const spriteDisplayHeight = costumeHeight * (sprite.size / 100) * this.view.zoom;
+                    const spriteDisplayHeight = costumeHeight * (sprite.baseScale || 1.0) * (sprite.size / 100) * this.view.zoom;
                     bubble.style.left = `${spriteCanvasX}px`;
                     bubble.style.top = `${spriteCanvasY - spriteDisplayHeight / 2 - bubble.offsetHeight - 5}px`;
                 }
@@ -134,11 +149,27 @@ window.Raccoon.stage = {
         const source = useSnapshot ? Raccoon.execution.snapshot : Raccoon;
         const getSprite = () => source.sprites[spriteId] || source.clones[spriteId];
         
+        const getList = (name) => {
+            const s = getSprite();
+            if (!s) return null;
+            if (s.localLists && s.localLists.hasOwnProperty(name)) return s.localLists[name];
+            if (source.lists.hasOwnProperty(name)) return source.lists[name];
+            return null;
+        };
+
+        const getVariable = (name) => {
+            const s = getSprite();
+            if (!s) return null;
+            if (s.localVariables && s.localVariables.hasOwnProperty(name)) return s.localVariables[name];
+            if (source.variables.hasOwnProperty(name)) return source.variables[name];
+            return null;
+        };
+        
         return {
-            getX: () => getSprite()?.x,
-            getY: () => getSprite()?.y,
-            getDirection: () => getSprite()?.rotation,
-            getSize: () => getSprite()?.size,
+            getX: () => { const s = getSprite(); return s ? s.x : 0; },
+            getY: () => { const s = getSprite(); return s ? s.y : 0; },
+            getDirection: () => { const s = getSprite(); return s ? s.rotation : 90; },
+            getSize: () => { const s = getSprite(); return s ? s.size : 100; },
             isKeyDown: (key) => Raccoon.keys.has(key),
             isMouseDown: () => Raccoon.mouse.isDown,
             getMouseX: () => Raccoon.mouse.x,
@@ -160,24 +191,23 @@ window.Raccoon.stage = {
             createClone: () => { const s = getSprite(); if (s) Raccoon.createClone(s.isClone ? s.parentId : s.id); },
             deleteThisClone: () => { const s = getSprite(); if (s && s.isClone) Raccoon.deleteClone(s.id); },
             distanceTo: (target) => { const s = getSprite(); if (!s) return 0; let targetX, targetY; if (target === '_mouse_') { targetX = Raccoon.mouse.x; targetY = Raccoon.mouse.y; } else { const targetSprite = Object.values(source.sprites).find(sp => sp.id === target) || Object.values(source.clones).find(c => c.id === target); if (!targetSprite) return 0; targetX = targetSprite.x; targetY = targetSprite.y; } return Math.hypot(s.x - targetX, s.y - targetY); },
-            setVariable: (name, value) => { const s = getSprite(); if (s?.localVariables && s.localVariables.hasOwnProperty(name)) s.localVariables[name].value = value; else if (source.variables.hasOwnProperty(name)) source.variables[name].value = value; Raccoon.uiUpdateCallback(); },
-            changeVariableBy: (name, value) => { const s = getSprite(); const numValue = parseFloat(value); if (isNaN(numValue)) return; const targetVar = (s?.localVariables && s.localVariables[name]) ? s.localVariables[name] : source.variables[name]; if (!targetVar) return; const currentVal = parseFloat(targetVar.value); if (!isNaN(currentVal)) { targetVar.value = currentVal + numValue; Raccoon.uiUpdateCallback(); } },
-            getVariable: (name) => { const s = getSprite(); return (s?.localVariables && s.localVariables[name]?.value) ?? source.variables[name]?.value ?? 0; },
-            showVariable: (name) => { const s = getSprite(); const v = (s?.localVariables && s.localVariables[name]) ? s.localVariables[name] : source.variables[name]; if (v) { v.visible = true; Raccoon.uiUpdateCallback(); } },
-            hideVariable: (name) => { const s = getSprite(); const v = (s?.localVariables && s.localVariables[name]) ? s.localVariables[name] : source.variables[name]; if (v) { v.visible = false; Raccoon.uiUpdateCallback(); } },
-            getList: (name) => { const s = getSprite(); return (s?.localLists && s.localLists[name]) ? s.localLists[name] : source.lists[name]; },
-            getListContents: (name) => { const l = getSprite().api.getList(name); return l ? l.value : []; },
-            addToList: (name, item) => { const l = getSprite().api.getList(name); if (l) { l.value.push(item); Raccoon.uiUpdateCallback(); } },
-            deleteFromList: (name, index) => { const l = getSprite().api.getList(name); if (!l) return; if (index === 'all') { l.value = []; } else if (index === 'last') { l.value.pop(); } else { const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx < l.value.length) l.value.splice(idx, 1); } Raccoon.uiUpdateCallback(); },
-            clearList: (name) => { const l = getSprite().api.getList(name); if(l) { l.value = []; Raccoon.uiUpdateCallback(); }},
-            insertInList: (name, index, item) => { const l = getSprite().api.getList(name); if (!l) return; const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx <= l.value.length) { l.value.splice(idx, 0, item); Raccoon.uiUpdateCallback(); } },
-            replaceItemInList: (name, index, item) => { const l = getSprite().api.getList(name); if (!l) return; const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx < l.value.length) { l.value[idx] = item; Raccoon.uiUpdateCallback(); } },
-            getItemOfList: (name, index) => { const l = getSprite().api.getList(name); if (!l) return ""; const idx = Math.round(Number(index)) - 1; return (l.value && l.value[idx] !== undefined) ? l.value[idx] : ""; },
-            getItemNumberOfList: (name, item) => { const l = getSprite().api.getList(name); return l ? (l.value.indexOf(item) + 1) : 0; },
-            getListLength: (name) => { const l = getSprite().api.getList(name); return l ? l.value.length : 0; },
-            listContains: (name, item) => { const l = getSprite().api.getList(name); return l ? l.value.includes(item) : false; },
-            showList: (name) => { const l = getSprite().api.getList(name); if (l) { l.visible = true; Raccoon.uiUpdateCallback(); } },
-            hideList: (name) => { const l = getSprite().api.getList(name); if (l) { l.visible = false; Raccoon.uiUpdateCallback(); } },
+            setVariable: (name, value) => { const v = getVariable(name); if(v) { v.value = value; Raccoon.uiUpdateCallback(); } },
+            changeVariableBy: (name, value) => { const v = getVariable(name); if(v) { const numValue = parseFloat(value); if (isNaN(numValue)) return; const currentVal = parseFloat(v.value); v.value = (isNaN(currentVal) ? 0 : currentVal) + numValue; Raccoon.uiUpdateCallback(); } },
+            getVariable: (name) => { const v = getVariable(name); return v ? v.value : 0; },
+            showVariable: (name) => { const v = getVariable(name); if (v) { v.visible = true; Raccoon.uiUpdateCallback(); } },
+            hideVariable: (name) => { const v = getVariable(name); if (v) { v.visible = false; Raccoon.uiUpdateCallback(); } },
+            getListContents: (name) => { const l = getList(name); return l ? l.value : []; },
+            addToList: (name, item) => { const l = getList(name); if (l) { l.value.push(item); Raccoon.uiUpdateCallback(); } },
+            deleteFromList: (name, index) => { const l = getList(name); if (!l) return; if (index === 'all') { l.value = []; } else if (index === 'last') { l.value.pop(); } else { const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx < l.value.length) l.value.splice(idx, 1); } Raccoon.uiUpdateCallback(); },
+            clearList: (name) => { const l = getList(name); if(l) { l.value = []; Raccoon.uiUpdateCallback(); }},
+            insertInList: (name, index, item) => { const l = getList(name); if (!l) return; const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx <= l.value.length) { l.value.splice(idx, 0, item); Raccoon.uiUpdateCallback(); } },
+            replaceItemInList: (name, index, item) => { const l = getList(name); if (!l) return; const idx = Math.round(Number(index)) - 1; if (idx >= 0 && idx < l.value.length) { l.value[idx] = item; Raccoon.uiUpdateCallback(); } },
+            getItemOfList: (name, index) => { const l = getList(name); if (!l) return ""; const idx = Math.round(Number(index)) - 1; return (l.value && l.value[idx] !== undefined) ? l.value[idx] : ""; },
+            getItemNumberOfList: (name, item) => { const l = getList(name); return l ? (l.value.indexOf(item) + 1) : 0; },
+            getListLength: (name) => { const l = getList(name); return l ? l.value.length : 0; },
+            listContains: (name, item) => { const l = getList(name); return l ? l.value.includes(item) : false; },
+            showList: (name) => { const l = getList(name); if (l) { l.visible = true; Raccoon.uiUpdateCallback(); } },
+            hideList: (name) => { const l = getList(name); if (l) { l.visible = false; Raccoon.uiUpdateCallback(); } },
             getTimer: () => (Date.now() - Raccoon.execution.timerStart) / 1000,
             resetTimer: () => { Raccoon.execution.timerStart = Date.now(); },
             goToLayer: (layer) => { const s = getSprite(); if (!s) return; const all = [...Object.values(source.sprites), ...Object.values(source.clones)]; if (layer === 'front') { s.layer = Math.max(...all.map(sp => sp.layer)) + 1; } else { s.layer = Math.min(...all.map(sp => sp.layer)) - 1; } Raccoon.stage.render(); }, 

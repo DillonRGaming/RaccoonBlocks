@@ -8,12 +8,28 @@ Object.assign(window.Raccoon, {
             const bgSize = 20 * this.view.zoom; 
             this.workspace.style.backgroundSize = `${bgSize}px ${bgSize}px`; 
         } 
+        if (this.stage && this.stage.reporterOutputEl && this.stage.reporterOutputEl.style.display === 'block') {
+            const blockId = this.stage.reporterOutputEl.dataset.blockId;
+            const blockEl = document.getElementById(blockId);
+            if(blockEl) {
+                const rect = blockEl.getBoundingClientRect();
+                this.stage.reporterOutputEl.style.left = `${rect.left + rect.width / 2}px`;
+                this.stage.reporterOutputEl.style.top = `${rect.bottom}px`;
+            } else {
+                this.hideReporterOutput();
+            }
+        }
     },
     
     renderBlock(blockData, isPalette = false) {
-        if (!blockData) return null;
-        
-        this.updateLayout(blockData, isPalette);
+        // Provide fallback dimensions if calculations aren't ready yet or are invalid
+        const width = typeof blockData.width === 'number' && !isNaN(blockData.width) && blockData.width > 0 ? blockData.width : 100;
+        const height = typeof blockData.height === 'number' && !isNaN(blockData.height) && blockData.height > 0 ? blockData.height : 40;
+
+        if (isNaN(width) || isNaN(height)) { // Double check after fallback, if still NaN, skip.
+             console.warn("Final block dimensions are invalid, skipping render:", blockData);
+             return null;
+        }
 
         let svg = isPalette 
             ? document.createElementNS('http://www.w3.org/2000/svg', 'svg')
@@ -30,16 +46,22 @@ Object.assign(window.Raccoon, {
         }
 
         svg.innerHTML = '';
-        svg.setAttribute('width', blockData.width);
-        svg.setAttribute('height', blockData.height);
-        svg.setAttribute('viewBox', `0 0 ${blockData.width} ${blockData.height}`);
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
         svg.classList.add(`${blockData.category}-color`);
 
         if (!isPalette) {
             svg.style.position = 'absolute';
             svg.style.left = `${blockData.position.x}px`;
             svg.style.top = `${blockData.position.y}px`;
-            svg.addEventListener('mousedown', (e) => this.initBlockDrag(e, blockData.id));
+            if (!svg.classList.contains('dragging')) {
+                svg.style.zIndex = blockData.depth || 0;
+            }
+            if (!svg.getAttribute('data-event-listeners-attached')) {
+                svg.addEventListener('mousedown', (e) => this.initBlockDrag(e, blockData.id));
+                svg.setAttribute('data-event-listeners-attached', 'true');
+            }
         } else {
             svg.addEventListener('dragstart', (e) => e.preventDefault());
         }
@@ -56,6 +78,7 @@ Object.assign(window.Raccoon, {
 
     updateLayout(blockData, isPalette) {
         let currentContentWidth = 10;
+        const allBlocksForSprite = isPalette ? {} : this.getAllBlocksForSprite(blockData.spriteId);
         
         if (blockData.layout) {
             const PADDING_BETWEEN_ITEMS = 8;
@@ -70,44 +93,51 @@ Object.assign(window.Raccoon, {
                 } else if (item.type === 'input' || item.type === 'dropdown') {
                     const inputData = blockData.inputs ? blockData.inputs[item.key] : null;
                     if (!inputData) {
-                        itemWidth = 30;
+                        itemWidth = 30; // Default for missing inputData
                     } else {
-                        let resolvedWidth = 30;
+                        let resolvedWidth = 30; // Default fallback
 
-                        const allBlocks = this.getAllBlocksForSprite(blockData.spriteId);
-                        if (!isPalette && inputData.blockId && allBlocks && allBlocks[inputData.blockId]) {
-                            const connectedBlock = allBlocks[inputData.blockId];
-                            this.updateLayout(connectedBlock, isPalette);
+                        const connectedBlock = (!isPalette && inputData.blockId && allBlocksForSprite) ? allBlocksForSprite[inputData.blockId] : null;
+
+                        if (connectedBlock && typeof connectedBlock.width === 'number' && !isNaN(connectedBlock.width)) {
                             resolvedWidth = connectedBlock.width;
-                        } else if (item.type === 'input') {
-                            const textWidth = this.measureText(String(inputData.value));
-                            resolvedWidth = Math.max(30, textWidth + 16);
-                        } else if (item.type === 'dropdown') {
-                            let options = inputData.options || [];
-                            if (inputData.dynamic) {
-                                const sprite = this.getActiveSprite();
-                                if (inputData.key === 'variable') {
-                                     const varNames = sprite ? [...new Set([...Object.keys(this.variables), ...Object.keys(sprite.localVariables)])] : [...Object.keys(this.variables)];
-                                     options = varNames.map(v => ({ label: v, value: v }));
-                                } else if (inputData.key === 'list') {
-                                     const listNames = sprite ? [...new Set([...Object.keys(this.lists), ...Object.keys(sprite.localLists)])] : [...Object.keys(this.lists)];
-                                     options = listNames.map(v => ({ label: v, value: v }));
-                                } else if (inputData.key === 'target') {
-                                    options = [{label: 'mouse-pointer', value: '_mouse_'}];
-                                    Object.values(this.sprites).forEach(s => {
-                                        if (s.id !== this.activeSpriteId) options.push({label: s.name, value: s.id});
-                                    });
+                        } else { // No connected block, determine width from inputData properties
+                            const inputShape = inputData.shape;
+
+                            if (inputShape === 'boolean') {
+                                resolvedWidth = this.EMPTY_BOOLEAN_INPUT_WIDTH;
+                            } else if (item.type === 'dropdown') {
+                                let options = inputData.options || [];
+                                if (inputData.dynamic) {
+                                    const sprite = this.getActiveSprite();
+                                    if (inputData.key === 'variable') {
+                                         const varNames = sprite ? [...new Set([...Object.keys(this.variables), ...Object.keys(sprite.localVariables)])] : [...Object.keys(this.variables)];
+                                         options = varNames.map(v => ({ label: v, value: v }));
+                                    } else if (inputData.key === 'list') {
+                                         const listNames = sprite ? [...new Set([...Object.keys(this.lists), ...Object.keys(sprite.localLists)])] : [...Object.keys(this.lists)];
+                                         options = listNames.map(v => ({ label: v, value: v }));
+                                    } else if (inputData.key === 'target') {
+                                        options = [{label: 'mouse-pointer', value: '_mouse_'}];
+                                        Object.values(this.sprites).forEach(s => {
+                                            if (s.id !== this.activeSpriteId) options.push({label: s.name, value: s.id});
+                                        });
+                                    }
+                                    inputData.options = options;
                                 }
-                                inputData.options = options;
+                                
+                                const currentOption = options.find(o => String(o.value) === String(inputData.value));
+                                const label = currentOption ? currentOption.label : (inputData.value || '');
+                                const measuredWidth = this.measureText(label) + 30; 
+                                resolvedWidth = Math.max(45, measuredWidth);
+                            } else if (inputShape === 'color') {
+                                resolvedWidth = 40;
+                            } else if (inputShape === 'slider') {
+                                resolvedWidth = 80;
+                            } else if (item.type === 'input') { // Generic text input (could be reporter output or simple string)
+                                const textWidth = this.measureText(String(inputData.value));
+                                resolvedWidth = Math.max(30, textWidth + 16);
                             }
-                            
-                            const currentOption = options.find(o => String(o.value) === String(inputData.value));
-                            const label = currentOption ? currentOption.label : (inputData.value || '...');
-                            const measuredWidth = this.measureText(label) + 30; 
-                            resolvedWidth = Math.max(45, measuredWidth);
-                        } else if (inputData.shape === 'boolean') resolvedWidth = 45;
-                        else if (inputData.shape === 'color') resolvedWidth = 40;
-                        else if (inputData.shape === 'slider') resolvedWidth = 80;
+                        }
 
                         inputData.width = resolvedWidth;
                         itemWidth = resolvedWidth;
@@ -126,17 +156,19 @@ Object.assign(window.Raccoon, {
         if (blockData.shape && blockData.shape.startsWith('c_shape')) {
             blockData.width = Math.max(150, blockData.width);
             const cTopH = 28, cMidH = 24, cBottomH = 24, cInnerMinH = 32;
-            const allBlocksForSprite = isPalette ? {} : this.getAllBlocksForSprite(blockData.spriteId);
             
             let innerHeight1 = cInnerMinH;
             if (!isPalette && blockData.child && allBlocksForSprite && allBlocksForSprite[blockData.child]) {
                 innerHeight1 = Math.max(cInnerMinH, this.calculateStackHeight(allBlocksForSprite[blockData.child], allBlocksForSprite));
             }
+            blockData.cInnerHeight1 = innerHeight1;
+
             if (blockData.type === 'control_if_else') {
                 let innerHeight2 = cInnerMinH;
                 if (!isPalette && blockData.child2 && allBlocksForSprite && allBlocksForSprite[blockData.child2]) {
                     innerHeight2 = Math.max(cInnerMinH, this.calculateStackHeight(allBlocksForSprite[blockData.child2], allBlocksForSprite));
                 }
+                blockData.cInnerHeight2 = innerHeight2;
                 blockData.height = cTopH + innerHeight1 + cMidH + innerHeight2 + cBottomH;
             } else {
                 blockData.height = cTopH + innerHeight1 + cBottomH;
@@ -166,10 +198,10 @@ Object.assign(window.Raccoon, {
             if (item.type === 'label' || item.type === 'operator') {
                 const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 const textWidth = this.measureText(textContent);
-                text.setAttribute('x', item.type === 'operator' ? currentX + textWidth / 2 : currentX );
+                text.setAttribute('x', currentX );
                 text.setAttribute('y', contentVerticalCenter);
                 text.setAttribute('dominant-baseline', 'middle');
-                text.setAttribute('text-anchor', item.type === 'operator' ? 'middle' : 'start');
+                text.setAttribute('text-anchor', 'start');
                 text.textContent = textContent;
                 text.classList.add('block-label');
                 svg.appendChild(text);
@@ -200,7 +232,6 @@ Object.assign(window.Raccoon, {
                 const hasConnectedBlock = !isPalette && inputData.blockId && blocks && blocks[inputData.blockId];
                 if (hasConnectedBlock) {
                     const connectedBlock = blocks[inputData.blockId];
-                    this.updateLayout(connectedBlock, isPalette);
                     inputSlotWidth = connectedBlock.width;
                     inputSlotHeight = connectedBlock.height;
                 }
@@ -208,23 +239,23 @@ Object.assign(window.Raccoon, {
                 const socket = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 socket.classList.add('input-socket');
                 let socketPathD;
-                const isCustomDropdown = item.type === 'dropdown';
+                const inputShape = inputData.shape || 'reporter';
 
-                if (inputData.shape === 'reporter' || inputData.shape === 'color' || inputData.shape === 'slider' || isCustomDropdown) {
+                if (['reporter', 'color', 'slider'].includes(inputShape) || item.type === 'dropdown') {
                     const rimR = inputSlotHeight / 2;
                     socketPathD = `M ${rimR} 0 H ${inputSlotWidth-rimR} A ${rimR} ${rimR} 0 0 1 ${inputSlotWidth} ${rimR} V ${inputSlotHeight-rimR} A ${rimR} ${rimR} 0 0 1 ${inputSlotWidth-rimR} ${inputSlotHeight} H ${rimR} A ${rimR} ${rimR} 0 0 1 0 ${inputSlotHeight-rimR} V ${rimR} A ${rimR} ${rimR} 0 0 1 ${rimR} 0 Z`;
-                } else if (inputData.shape === 'boolean') {
+                } else if (inputShape === 'boolean') {
                     const socketHexH = inputSlotHeight/2;
                     socketPathD = `M ${socketHexH} 0 H ${inputSlotWidth - socketHexH} L ${inputSlotWidth} ${socketHexH} L ${inputSlotWidth - socketHexH} ${inputSlotHeight} H ${socketHexH} L 0 ${socketHexH} Z`;
                 } else {
                     socketPathD = `M 0 0 H ${inputSlotWidth} V ${inputSlotHeight} H 0 Z`;
                 }
-                if (isCustomDropdown) { socket.classList.add('custom-dropdown'); }
+                if (item.type === 'dropdown') { socket.classList.add('custom-dropdown'); }
                 socket.setAttribute('transform', `translate(${currentX}, ${contentVerticalCenter - inputSlotHeight/2})`);
                 socket.setAttribute('d', socketPathD);
                 svg.insertBefore(socket, mainBlockPath.nextSibling);
 
-                if (!hasConnectedBlock) {
+                if (!hasConnectedBlock && inputData.shape !== 'boolean') {
                     const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
                     foreignObject.setAttribute('x', currentX);
                     foreignObject.setAttribute('y', contentVerticalCenter - 12);
@@ -276,7 +307,7 @@ Object.assign(window.Raccoon, {
                         dropdownEl.innerHTML = `<span>${currentOption ? currentOption.label : (inputData.value || '...')}</span><i class="fa-solid fa-chevron-down"></i>`;
                         dropdownEl.addEventListener('mousedown', (e) => {
                             e.stopPropagation();
-                            this.showDropdown(e.currentTarget, isPalette ? blockData : blockData.id, item.key, isPalette);
+                            this.showDropdown(dropdownEl, isPalette ? blockData : blockData.id, item.key, isPalette);
                         });
                         wrapper.appendChild(dropdownEl);
                     }
@@ -290,12 +321,7 @@ Object.assign(window.Raccoon, {
         if (blockData.type === 'control_if_else') {
             const cTopH = 28, cMidH = 24, cArmIndent = 20;
             const cInnerMinH = 32; 
-            const allBlocksForSprite = isPalette ? {} : this.getAllBlocksForSprite(blockData.spriteId);
-            
-            let innerH1 = cInnerMinH; 
-            if (!isPalette && blockData.child && allBlocksForSprite && allBlocksForSprite[blockData.child]) {
-                innerHeight1 = Math.max(cInnerMinH, this.calculateStackHeight(allBlocksForSprite[blockData.child], allBlocksForSprite));
-            }
+            const innerH1 = blockData.cInnerHeight1 || cInnerMinH;
             
             const elseLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             elseLabel.textContent = 'else';
@@ -307,69 +333,85 @@ Object.assign(window.Raccoon, {
         }
     },
 
-    updateBlockPositions(startBlockId, visited = new Set()) {
-        if (!startBlockId || visited.has(startBlockId)) return;
+    updateBlockPositions(startBlockId) {
+        const rootId = this.getStackRoot(startBlockId, this.activeSpriteId)?.id || startBlockId;
+        const allBlocks = this.getActiveBlocks();
+        const layoutVisited = new Set();
+        const positionVisited = new Set();
+
+        const layoutPass = (blockId) => {
+            if (!blockId || layoutVisited.has(blockId)) return;
+            layoutVisited.add(blockId);
+            
+            const block = allBlocks[blockId];
+            if (!block) return;
     
-        const sprite = this.getActiveSprite();
-        if (!sprite) return;
-        const allBlocks = sprite.blocks;
-        const startBlock = allBlocks[startBlockId];
-        if (!startBlock) return;
-
-        visited.add(startBlockId);
-
-        this.updateLayout(startBlock, false);
-        this.renderBlock(startBlock);
-        
-        if (startBlock.inputs) {
+            if (block.next) layoutPass(block.next);
+            if (block.inputs) {
+                Object.values(block.inputs).forEach(input => {
+                    if (input.blockId) layoutPass(input.blockId);
+                });
+            }
+            if (block.child) layoutPass(block.child);
+            if (block.child2) layoutPass(block.child2);
+    
+            this.updateLayout(block, false); // Calculate layout for current block
+        };
+        layoutPass(rootId);
+    
+        const positionPass = (blockId, pos, depth) => {
+            if (!blockId || positionVisited.has(blockId)) return;
+            positionVisited.add(blockId);
+    
+            const block = allBlocks[blockId];
+            if (!block) return;
+            
+            block.position = pos;
+            block.depth = depth;
+            this.renderBlock(block); // Render here after dimensions and position are stable
+    
             let xOffset = 10;
             const PADDING_BETWEEN_ITEMS = 8;
-            const contentVerticalCenter = (startBlock.shape && startBlock.shape.startsWith('c_shape')) ? 14 : startBlock.height / 2;
-
-            startBlock.layout.forEach(item => {
-                let itemWidth = 0;
-                if (item.type === 'input' || item.type === 'dropdown') {
-                    const inputData = startBlock.inputs[item.key];
-                    if (inputData && inputData.blockId && allBlocks[inputData.blockId]) {
-                        const childBlock = allBlocks[inputData.blockId];
-                        childBlock.position.x = startBlock.position.x + xOffset;
-                        childBlock.position.y = startBlock.position.y + contentVerticalCenter - (childBlock.height / 2);
-                        this.updateBlockPositions(childBlock.id, visited);
-                        itemWidth = childBlock.width;
-                    } else if(inputData) {
-                        itemWidth = inputData.width || 30;
+            const contentVerticalCenter = (block.shape && block.shape.startsWith('c_shape')) ? 14 : block.height / 2;
+    
+            if (block.layout) {
+                block.layout.forEach(item => {
+                    let itemWidth = 0;
+                    if (item.type === 'input' || item.type === 'dropdown') {
+                        const inputData = block.inputs[item.key];
+                        if (inputData) {
+                            if (inputData.blockId && allBlocks[inputData.blockId]) {
+                                const childBlock = allBlocks[inputData.blockId];
+                                positionPass(childBlock.id, { x: block.position.x + xOffset, y: block.position.y + contentVerticalCenter - (childBlock.height / 2)}, depth + 1);
+                                itemWidth = childBlock.width;
+                            } else {
+                                itemWidth = inputData.width || 30;
+                            }
+                        }
+                    } else if (item.type === 'label' || item.type === 'operator') {
+                        itemWidth = this.measureText(item.text || '');
+                    } else if (item.type === 'icon') {
+                        itemWidth = 16;
                     }
-                } else if (item.type === 'label' || item.type === 'operator') {
-                    itemWidth = this.measureText(item.text || '');
-                } else if (item.type === 'icon') {
-                    itemWidth = 16;
-                }
-                xOffset += itemWidth + PADDING_BETWEEN_ITEMS;
-            });
-        }
-
-        if (startBlock.child && allBlocks[startBlock.child]) {
-            const childBlock = allBlocks[startBlock.child];
-            childBlock.position.x = startBlock.position.x + 20;
-            childBlock.position.y = startBlock.position.y + 28;
-            this.updateBlockPositions(childBlock.id, visited);
-        }
-        if (startBlock.child2 && allBlocks[startBlock.child2]) {
-            const child2Block = allBlocks[startBlock.child2];
-            const cTopH = 28, cMidH = 24, cInnerMinH = 32;
-            let innerH1 = (startBlock.child && allBlocks[startBlock.child]) 
-                ? Math.max(cInnerMinH, this.calculateStackHeight(allBlocks[startBlock.child], allBlocks)) 
-                : cInnerMinH;
-            child2Block.position.x = startBlock.position.x + 20;
-            child2Block.position.y = startBlock.position.y + cTopH + innerH1 + cMidH;
-            this.updateBlockPositions(child2Block.id, visited);
-        }
+                    if (item.type !== 'monitor') {
+                        xOffset += itemWidth + PADDING_BETWEEN_ITEMS;
+                    }
+                });
+            }
+    
+            if (block.child) {
+                positionPass(block.child, { x: pos.x + 20, y: pos.y + 28 }, depth + 1);
+            }
+            if (block.child2) {
+                const cTopH = 28, cMidH = 24, cInnerMinH = 32;
+                let innerH1 = block.cInnerHeight1 || cInnerMinH;
+                positionPass(block.child2, { x: pos.x + 20, y: pos.y + cTopH + innerH1 + cMidH }, depth + 1);
+            }
+            if (block.next) {
+                positionPass(block.next, { x: pos.x, y: pos.y + block.height }, depth);
+            }
+        };
         
-        if (startBlock.next && allBlocks[startBlock.next]) {
-            const nextBlock = allBlocks[startBlock.next];
-            nextBlock.position.x = startBlock.position.x;
-            nextBlock.position.y = startBlock.position.y + startBlock.height;
-            this.updateBlockPositions(nextBlock.id, visited);
-        }
+        positionPass(rootId, allBlocks[rootId].position, 0);
     },
 });

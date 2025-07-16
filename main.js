@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (success) {
             const activeCategory = categorySwitcherEl.querySelector('.active')?.dataset.category;
+            // Always re-populate palette for data/lists if active, as new items affect available blocks
             if (activeCategory === 'data' || activeCategory === 'lists') {
                 populatePalette(activeCategory);
             }
@@ -145,7 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const deleteLabel = block.next ? "Delete Stack" : "Delete Block";
             menuItems.push({ label: 'Duplicate', action: () => Raccoon.duplicateStack(block.id, { x: e.clientX, y: e.clientY }, false, true) });
             menuItems.push({ label: deleteLabel, action: () => Raccoon.deleteStack(block.id, block.spriteId) });
-            menuItems.push({ label: 'Add Comment', action: () => Raccoon.addComment({ x: block.position.x + block.width + 10, y: block.position.y }) });
 
             const blockDef = Raccoon.blockDefinitions[block.type];
             if (blockDef?.spec.switchable?.length > 0) {
@@ -161,9 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
-        } else if (context.type === 'workspace') {
-            const virtualPos = Raccoon.screenToVirtual({ x: e.clientX, y: e.clientY });
-            menuItems.push({ label: 'Add Comment', action: () => Raccoon.addComment(virtualPos) });
         }
     
         contextMenuEl.innerHTML = '';
@@ -192,75 +189,108 @@ document.addEventListener('DOMContentLoaded', () => {
         contextMenuEl.style.top = `${e.clientY}px`;
     }
     
-    function createPaletteBlock(spec) {
+    function createPaletteBlock(blockDef) {
         const specCopy = (typeof structuredClone === 'function')
-            ? structuredClone(spec)
-            : JSON.parse(JSON.stringify(spec));
+            ? structuredClone(blockDef.spec)
+            : JSON.parse(JSON.stringify(blockDef.spec));
         
+        // Manually add non-cloneable properties
+        specCopy.type = blockDef.spec.type; 
+
         const activeSprite = Raccoon.getActiveSprite();
+        // Dynamic options for inputs like variables, lists, targets
         if (specCopy.inputs) {
-            if (specCopy.inputs.variable) {
-                 const varNames = activeSprite ? [...new Set([...Object.keys(Raccoon.variables), ...Object.keys(activeSprite.localVariables)])] : [...Object.keys(Raccoon.variables)];
-                 if (varNames.length === 0 && spec.type === 'data_variable') return null; // Only return null for variable blocks if no vars exist
-                 specCopy.inputs.variable.value = varNames[0] || '';
-                 specCopy.inputs.variable.dynamic = true;
-            }
-            if (specCopy.inputs.list) {
-                 const listNames = activeSprite ? [...new Set([...Object.keys(Raccoon.lists), ...Object.keys(activeSprite.localLists)])] : [...Object.keys(Raccoon.lists)];
-                 if (listNames.length === 0 && spec.type === 'data_listcontents') return null; // Only return null for list blocks if no lists exist
-                 specCopy.inputs.list.value = listNames[0] || '';
-                 specCopy.inputs.list.dynamic = true;
-            }
-            if (specCopy.inputs.target) {
-                specCopy.inputs.target.dynamic = true;
+            for (const key in specCopy.inputs) {
+                const inputSpec = specCopy.inputs[key];
+                if (inputSpec.dynamic) {
+                    let options = inputSpec.options || []; // Start with any predefined options
+                    if (key === 'variable') {
+                        const varNames = activeSprite ? [...new Set([...Object.keys(Raccoon.variables), ...Object.keys(activeSprite.localVariables)])] : [...Object.keys(Raccoon.variables)];
+                        options = varNames.map(v => ({ label: v, value: v }));
+                        specCopy.inputs.variable.value = varNames[0] || '';
+                    } else if (key === 'list') {
+                        const listNames = activeSprite ? [...new Set([...Object.keys(Raccoon.lists), ...Object.keys(activeSprite.localLists)])] : [...Object.keys(Raccoon.lists)];
+                        options = listNames.map(v => ({ label: v, value: v }));
+                        specCopy.inputs.list.value = listNames[0] || '';
+                    } else if (key === 'target') {
+                        // For 'point towards' target dropdown
+                        options = [{label: 'mouse-pointer', value: '_mouse_'}, {label: 'random position', value: '_random_'}]; // Add _random_ as a default
+                        Object.values(Raccoon.sprites).forEach(s => {
+                            if (s.id !== activeSprite.id) options.push({label: s.name, value: s.id});
+                        });
+                    }
+                    inputSpec.options = options; // Update options on the specCopy
+                }
             }
         }
         
         const isMonitorable = specCopy.layout?.some(item => item.type === 'monitor');
         const container = document.createElement('div');
-        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'palette-block-wrapper';
+
         if (isMonitorable) {
             container.className = 'palette-block-container';
+            container.style.marginBottom = `${Raccoon.PALETTE_BLOCK_SPACING}px`;
 
             const checkboxLabel = document.createElement('label');
             checkboxLabel.className = 'monitor-checkbox-palette';
             
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            
-            const blockDef = Raccoon.blockDefinitions[specCopy.type];
-            checkbox.checked = !!blockDef?.spec.monitored;
+
+            if (specCopy.type === 'data_variable') {
+                const varObj = activeSprite && specCopy.inputs.variable.value in activeSprite.localVariables 
+                               ? activeSprite.localVariables[specCopy.inputs.variable.value] 
+                               : Raccoon.variables[specCopy.inputs.variable.value];
+                checkbox.checked = varObj ? varObj.visible : false;
+            } else if (specCopy.type === 'data_listcontents') {
+                const listObj = activeSprite && specCopy.inputs.list.value in activeSprite.localLists
+                               ? activeSprite.localLists[specCopy.inputs.list.value]
+                               : Raccoon.lists[specCopy.inputs.list.value];
+                checkbox.checked = listObj ? listObj.visible : false;
+            } else {
+                checkbox.checked = !!blockDef?.spec.monitored;
+            }
             
             checkbox.addEventListener('click', e => {
                 e.stopPropagation();
                 const isChecked = e.target.checked;
-                specCopy.monitored = isChecked;
-
-                if (blockDef) {
-                     blockDef.spec.monitored = isChecked;
-                }
                 
-                const blocks = Raccoon.getActiveBlocks();
-                for(const blockId in blocks) {
-                    if (blocks[blockId].type === specCopy.type) {
-                        blocks[blockId].monitored = isChecked;
+                if (specCopy.type === 'data_variable') {
+                    const varName = specCopy.inputs.variable.value;
+                    const varObj = activeSprite && varName in activeSprite.localVariables 
+                                   ? activeSprite.localVariables[varName] 
+                                   : Raccoon.variables[varName];
+                    if (varObj) varObj.visible = isChecked;
+                } else if (specCopy.type === 'data_listcontents') {
+                    const listName = specCopy.inputs.list.value;
+                    const listObj = activeSprite && listName in activeSprite.localLists
+                                   ? activeSprite.localLists[listName]
+                                   : Raccoon.lists[listName];
+                    if (listObj) listObj.visible = isChecked;
+                } else {
+                    const originalBlockDef = Raccoon.blockDefinitions[specCopy.type];
+                    if (originalBlockDef) { originalBlockDef.spec.monitored = isChecked; }
+                    const blocksInWorkspace = Raccoon.getActiveBlocks();
+                    for(const blockId in blocksInWorkspace) {
+                        if (blocksInWorkspace[blockId].type === specCopy.type) {
+                            blocksInWorkspace[blockId].monitored = isChecked;
+                        }
                     }
                 }
-                Raccoon.stage.render();
+                Raccoon.stage.render(); // Re-render stage to update monitors
             });
 
             checkboxLabel.appendChild(checkbox);
             container.appendChild(checkboxLabel);
+        } else {
+             wrapper.style.marginBottom = `${Raccoon.PALETTE_BLOCK_SPACING}px`;
         }
         
-        const wrapper = document.createElement('div');
-        wrapper.className = 'palette-block-wrapper';
-        
-        // Ensure layout is updated BEFORE rendering for palette blocks to calculate width/height
         Raccoon.updateLayout(specCopy, true); 
         const paletteSvg = Raccoon.renderBlock(specCopy, true);
-        if (!paletteSvg) { // renderBlock might return null if dimensions are invalid even after updateLayout
-            console.warn("Failed to create palette block SVG for spec:", specCopy);
+        if (!paletteSvg) {
             return null; 
         }
         wrapper.appendChild(paletteSvg);
@@ -273,21 +303,27 @@ document.addEventListener('DOMContentLoaded', () => {
              }
         });
         
-        container.appendChild(wrapper);
-        return container;
+        if (isMonitorable) {
+            container.appendChild(wrapper);
+            return container;
+        }
+        return wrapper;
     }
 
     function createDataHeader(text) {
         const header = document.createElement('div');
         header.className = 'palette-data-header';
-        header.textContent = text;
         return header;
     }
 
     function populatePalette(categoryId) {
         paletteEl.innerHTML = '';
         const activeSprite = Raccoon.getActiveSprite();
-    
+        const hasGlobalVars = Object.keys(Raccoon.variables).length > 0;
+        const hasLocalVars = activeSprite && Object.keys(activeSprite.localVariables).length > 0;
+        const hasGlobalLists = Object.keys(Raccoon.lists).length > 0;
+        const hasLocalLists = activeSprite && Object.keys(activeSprite.localLists).length > 0;
+
         if (categoryId === 'data' || categoryId === 'lists') {
             const isData = categoryId === 'data';
             const button = document.createElement('button');
@@ -295,8 +331,10 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = `Make a ${isData ? 'Variable' : 'List'}`;
             button.addEventListener('click', () => showVariableModal(isData ? 'variable' : 'list'));
             paletteEl.appendChild(button);
-    
+
             const globalItems = isData ? Raccoon.variables : Raccoon.lists;
+            const localItems = activeSprite ? (isData ? activeSprite.localVariables : activeSprite.localLists) : {};
+
             if (Object.keys(globalItems).length > 0) {
                 paletteEl.appendChild(createDataHeader('For All Sprites'));
                 Object.keys(globalItems).forEach(name => {
@@ -307,24 +345,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
     
-            if (activeSprite) {
-                const localItems = isData ? activeSprite.localVariables : activeSprite.localLists;
-                if (Object.keys(localItems).length > 0) {
-                    paletteEl.appendChild(createDataHeader('For This Sprite Only'));
-                    Object.keys(localItems).forEach(name => {
-                        const item = localItems[name];
-                        const spec = { type: isData ? 'data_variable' : 'data_listcontents', monitorLabel: `${activeSprite.name}: ${name}`, monitored: item.visible, category: categoryId, shape: 'reporter', outputType: 'reporter', layout: [ {type:'monitor'}, {type: 'label', text: name} ], inputs: { [isData ? 'variable' : 'list']: { value: name } } };
-                        const blockEl = createPaletteBlock(spec);
-                        if (blockEl) paletteEl.appendChild(blockEl);
-                    });
-                }
+            if (activeSprite && Object.keys(localItems).length > 0) {
+                paletteEl.appendChild(createDataHeader('For This Sprite Only'));
+                Object.keys(localItems).forEach(name => {
+                    const item = localItems[name];
+                    const spec = { type: isData ? 'data_variable' : 'data_listcontents', monitorLabel: `${activeSprite.name}: ${name}`, monitored: item.visible, category: categoryId, shape: 'reporter', outputType: 'reporter', layout: [ {type:'monitor'}, {type: 'label', text: name} ], inputs: { [isData ? 'variable' : 'list']: { value: name } } };
+                    const blockEl = createPaletteBlock(spec);
+                    if (blockEl) paletteEl.appendChild(blockEl);
+                });
             }
         }
         
         const blocks = Raccoon.getBlocksForCategory(categoryId);
-        blocks.forEach(spec => {
-             if (spec.type === 'data_variable' || spec.type === 'data_listcontents') return;
-             const blockEl = createPaletteBlock(spec);
+        blocks.forEach(blockDef => {
+             if (blockDef.spec.type === 'data_variable' || blockDef.spec.type === 'data_listcontents') return; 
+
+             if (blockDef.spec.requiresData && !(hasGlobalVars || hasLocalVars)) return;
+             if (blockDef.spec.requiresList && !(hasGlobalLists || hasLocalLists)) return;
+             
+             const blockEl = createPaletteBlock(blockDef);
              if (blockEl) paletteEl.appendChild(blockEl);
         });
     }
@@ -351,12 +390,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function setActiveSprite(spriteId) {
-        Raccoon.setActiveSprite(spriteId);
+        if (!Raccoon.sprites[spriteId] || Raccoon.activeSpriteId === spriteId) return; 
+
+        const oldSprite = Raccoon.getActiveSprite();
+        if (oldSprite) {
+            document.querySelectorAll(`.block[data-sprite-id="${oldSprite.id}"]`).forEach(el => el.classList.add('hidden'));
+        }
+
+        Raccoon.activeSpriteId = spriteId; 
+
+        const newSprite = Raccoon.getActiveSprite();
+        if (newSprite) {
+            document.querySelectorAll(`.block[data-sprite-id="${newSprite.id}"]`).forEach(el => el.classList.remove('hidden'));
+            
+            const currentSpriteBlocks = Raccoon.getActiveBlocks();
+            const rootsToUpdate = new Set();
+            for (const blockId in currentSpriteBlocks) {
+                const block = currentSpriteBlocks[blockId];
+                if (!block.previous && !block.parentInput) {
+                    rootsToUpdate.add(block.id);
+                }
+            }
+            rootsToUpdate.forEach(rootId => Raccoon.updateBlockPositions(rootId));
+        }
+
         const activeCategory = categorySwitcherEl.querySelector('.active')?.dataset.category;
-        if (activeCategory && ['data', 'lists', 'sensing', 'looks', 'motion'].includes(activeCategory)) {
+        if (activeCategory) {
             populatePalette(activeCategory);
         }
-        updateAllUI();
+        updateAllUI(); 
     }
 
     runButtonEl.addEventListener('click', () => Raccoon.start());
@@ -379,7 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const blockEl = e.target.closest('.block');
         if (blockEl) {
             showContextMenu(e, { type: 'block', id: blockEl.id });
-        } else if (!e.target.closest('.comment-container')) {
+        } else if (!e.target.closest('.modal-overlay, .context-menu, .dropdown-menu, .color-picker, .block-slider')) {
             showContextMenu(e, { type: 'workspace' });
         }
     });

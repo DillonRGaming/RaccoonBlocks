@@ -14,7 +14,8 @@ const EVENTS_CATEGORY = {
             spec: {
                 shape: 'hat',
                 layout: [{type: 'label', text: 'when'}, {type: 'dropdown', key: 'key'}, {type: 'label', text: 'key pressed'}],
-                inputs: { key: { value: 'space', options: [
+                // Requirement 1: Input Shape Constraints - dropdown output is reporter
+                inputs: { key: { value: 'space', shape: 'reporter', acceptedShapes: ['reporter'], options: [
                     {label: 'space', value: 'space'}, {label: 'up arrow', value: 'ArrowUp'}, {label: 'down arrow', value: 'ArrowDown'},
                     {label: 'right arrow', value: 'ArrowRight'}, {label: 'left arrow', value: 'ArrowLeft'}, {label: 'any', value: 'any'},
                     ...Array.from('abcdefghijklmnopqrstuvwxyz0123456789').map(k => ({label: k, value: k}))

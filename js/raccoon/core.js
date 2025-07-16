@@ -10,7 +10,8 @@ window.Raccoon = {
     snapThreshold: 40,
     REPORTER_BUBBLE_LIFETIME: 1500,
     EMPTY_BOOLEAN_INPUT_WIDTH: 40,
-    DEFAULT_SPRITE_DIMENSION: 90,
+    DEFAULT_SPRITE_DIMENSION: 90, 
+    PALETTE_BLOCK_SPACING: 10, // New variable for palette spacing
 
     view: { 
         x: 0, 
@@ -40,6 +41,7 @@ window.Raccoon = {
 
     blockDefinitions: {},
     categoryData: {},
+    BlockColors: {}, // Add BlockColors object
     
     execution: { 
         isStopping: false, 
@@ -64,6 +66,7 @@ window.Raccoon = {
             icon: category.icon, 
             color: category.color 
         };
+        this.BlockColors[category.id] = category.color; // Store the color
         for (const blockType in category.blocks) {
             this.blockDefinitions[blockType] = category.blocks[blockType];
             this.blockDefinitions[blockType].spec.type = blockType;
@@ -79,7 +82,7 @@ window.Raccoon = {
         const blocks = [];
         for (const blockType in this.blockDefinitions) {
             if (this.blockDefinitions[blockType].spec.category === categoryId) {
-                blocks.push(this.blockDefinitions[blockType].spec);
+                blocks.push(this.blockDefinitions[blockType]); // Push the entire block definition, not just the spec
             }
         }
         return blocks;
@@ -128,6 +131,8 @@ window.Raccoon = {
     },
 
     calculateStackHeight(startBlock, allBlocks) {
+        if (!startBlock || !allBlocks) return 0;
+
         let height = 0;
         let current = startBlock;
         const visited = new Set();
@@ -181,7 +186,7 @@ window.Raccoon = {
             if (!e.target.closest('.dropdown-trigger, .dropdown-menu, .modal-content, .color-picker, .block-slider')) {
                 this.hideDropdown(); this.hideColorPicker(); this.hideSliderInput();
             }
-            if (!e.target.closest('.block, .palette-block-wrapper, .reporter-output')) {
+            if (!e.target.closest('.block, .palette-block-wrapper, #reporter-output')) {
                 this.hideReporterOutput();
             }
         }, true);

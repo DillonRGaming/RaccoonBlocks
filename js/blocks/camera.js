@@ -8,7 +8,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set camera x to'}, {type: 'input', key: 'x'}],
-                inputs: { x: { value: 0, shape: 'reporter', width: 40 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { x: { value: 0, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.setCameraX(args.x)
         },
@@ -16,7 +17,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set camera y to'}, {type: 'input', key: 'y'}],
-                inputs: { y: { value: 0, shape: 'reporter', width: 40 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { y: { value: 0, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.setCameraY(args.y)
         },
@@ -24,7 +26,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change camera x by'}, {type: 'input', key: 'dx'}],
-                inputs: { dx: { value: 10, shape: 'reporter', width: 40 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { dx: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.changeCameraX(args.dx)
         },
@@ -32,7 +35,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change camera y by'}, {type: 'input', key: 'dy'}],
-                inputs: { dy: { value: 10, shape: 'reporter', width: 40 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { dy: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.changeCameraY(args.dy)
         },
@@ -40,7 +44,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set camera zoom to'}, {type: 'input', key: 'zoom'}, {type: 'label', text: '%'}],
-                inputs: { zoom: { value: 100, shape: 'reporter', width: 50 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { zoom: { value: 100, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.setCameraZoom(args.zoom)
         },
@@ -48,7 +53,8 @@ const CAMERA_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change camera zoom by'}, {type: 'input', key: 'd_zoom'}, {type: 'label', text: '%'}],
-                inputs: { d_zoom: { value: 10, shape: 'reporter', width: 50 } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { d_zoom: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args) => Raccoon.stage.changeCameraZoom(args.d_zoom)
         },

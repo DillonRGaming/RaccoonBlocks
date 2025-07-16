@@ -1,3 +1,4 @@
+
 const CONTROL_CATEGORY = {
     id: 'control',
     label: 'Control',
@@ -8,7 +9,8 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'wait'}, {type: 'input', key: 'duration'}, {type: 'label', text: 'seconds'}],
-                inputs: { duration: { value: 1, shape: 'reporter' } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { duration: { value: 1, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.wait(args.duration)
         },
@@ -16,7 +18,8 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'c_shape', minWidth: 160,
                 layout: [{type: 'label', text: 'repeat'}, {type: 'input', key: 'times'}],
-                inputs: { times: { value: 10, shape: 'reporter' } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { times: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: async (args, api, { execute, isStopping }) => {
                 const times = Math.round(Number(args.times) || 0);
@@ -34,7 +37,7 @@ const CONTROL_CATEGORY = {
             onExecute: async (args, api, { execute, isStopping }) => {
                 while (!isStopping()) {
                     if (args.child) await execute(args.child);
-                    await Raccoon.sleep(10);
+                    await Raccoon.sleep(10); // Yield to prevent freezing
                 }
             }
         },
@@ -42,7 +45,8 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'c_shape', minWidth: 160,
                 layout: [{type: 'label', text: 'if'}, {type: 'input', key: 'condition', shape: 'boolean'}, {type: 'label', text: 'then'}],
-                inputs: { condition: { blockId: null, shape: 'boolean' } }
+                // Requirement 1: Input Shape Constraints - only accepts boolean
+                inputs: { condition: { blockId: null, shape: 'boolean', acceptedShapes: ['boolean'] } }
             },
             onExecute: async (args, api, { execute }) => {
                 if (args.condition) {
@@ -54,7 +58,8 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'c_shape', minWidth: 160,
                 layout: [{type: 'label', text: 'if'}, {type: 'input', key: 'condition', shape: 'boolean'}, {type: 'label', text: 'then'}],
-                inputs: { condition: { blockId: null, shape: 'boolean' } }
+                // Requirement 1: Input Shape Constraints - only accepts boolean
+                inputs: { condition: { blockId: null, shape: 'boolean', acceptedShapes: ['boolean'] } }
             },
             onExecute: async (args, api, { execute }) => {
                 if (args.condition) {
@@ -68,12 +73,14 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'wait until'}, {type: 'input', key: 'condition', shape: 'boolean'}],
-                inputs: { condition: { blockId: null, shape: 'boolean' } }
+                // Requirement 1: Input Shape Constraints - only accepts boolean
+                inputs: { condition: { blockId: null, shape: 'boolean', acceptedShapes: ['boolean'] } }
             },
             onExecute: async (args, api, { isStopping }) => {
-                while (!args.condition) {
+                while (!args.condition) { // Keep waiting as long as condition is false
                     if (isStopping()) break;
-                    await Raccoon.sleep(10);
+                    await Raccoon.sleep(10); // Yield to prevent freezing
+                    // Re-evaluate the condition on each loop iteration
                     args.condition = args.blockId ? await Raccoon.evaluateReporter(args.blockId, api.getSprite().id) : false;
                 }
             }
@@ -82,13 +89,15 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'c_shape', minWidth: 160,
                 layout: [{type: 'label', text: 'repeat until'}, {type: 'input', key: 'condition', shape: 'boolean'}],
-                inputs: { condition: { blockId: null, shape: 'boolean' } }
+                // Requirement 1: Input Shape Constraints - only accepts boolean
+                inputs: { condition: { blockId: null, shape: 'boolean', acceptedShapes: ['boolean'] } }
             },
             onExecute: async (args, api, { execute, isStopping }) => {
-                while (!args.condition) {
+                while (!args.condition) { // Keep repeating as long as condition is false
                     if (isStopping()) break;
                     if (args.child) await execute(args.child);
-                    await Raccoon.sleep(10);
+                    await Raccoon.sleep(10); // Yield to prevent freezing
+                    // Re-evaluate the condition on each loop iteration
                     args.condition = args.blockId ? await Raccoon.evaluateReporter(args.blockId, api.getSprite().id) : false;
                 }
             }
@@ -107,7 +116,9 @@ const CONTROL_CATEGORY = {
                 if(args.stop_option === 'all') {
                     Raccoon.stopAllScripts();
                 } else {
-                    isStopping = () => true;
+                    // For 'this script' and 'other scripts in sprite', we essentially stop the current script's execution flow
+                    // and let the runner handle other scripts (if 'other scripts in sprite')
+                    isStopping = () => true; 
                 }
             }
         },
@@ -115,12 +126,14 @@ const CONTROL_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'create clone of'}, {type: 'dropdown', key: 'target'}],
-                inputs: { target: { value: '_myself_', shape: 'reporter', dynamic: true, options: [] } }
+                // Requirement 1: Input Shape Constraints - dropdown is implicitly a reporter of string
+                inputs: { target: { value: '_myself_', shape: 'reporter', acceptedShapes: ['reporter'], dynamic: true, options: [] } }
             },
             onExecute: (args, api) => {
                 if (args.target === '_myself_') {
                     api.createClone();
                 } else {
+                    // Find the sprite by ID from the target dropdown value
                     const targetSprite = Raccoon.sprites[args.target];
                     if (targetSprite) {
                         Raccoon.createClone(targetSprite.id);

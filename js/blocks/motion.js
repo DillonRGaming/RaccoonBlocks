@@ -8,7 +8,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'move'}, {type: 'input', key: 'steps'}, {type: 'label', text: 'steps'}],
-                inputs: { steps: { value: 10, shape: 'reporter' } }
+                inputs: { steps: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.move(args.steps)
         },
@@ -16,7 +16,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'turn'}, {type: 'icon', icon: 'fa-rotate-right'}, {type: 'input', key: 'degrees'}, {type: 'label', text: 'degrees'}],
-                inputs: { degrees: { value: 15, shape: 'reporter' } }
+                inputs: { degrees: { value: 15, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.turn(args.degrees, 'right')
         },
@@ -24,7 +24,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'turn'}, {type: 'icon', icon: 'fa-rotate-left'}, {type: 'input', key: 'degrees'}, {type: 'label', text: 'degrees'}],
-                inputs: { degrees: { value: 15, shape: 'reporter' } }
+                inputs: { degrees: { value: 15, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.turn(args.degrees, 'left')
         },
@@ -33,8 +33,8 @@ const MOTION_CATEGORY = {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'go to x:'}, {type: 'input', key: 'x'}, {type: 'label', text: 'y:'}, {type: 'input', key: 'y'}],
                 inputs: {
-                    x: { value: 0, shape: 'reporter' },
-                    y: { value: 0, shape: 'reporter' }
+                    x: { value: 0, shape: 'reporter', acceptedShapes: ['any'] },
+                    y: { value: 0, shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
             onExecute: (args, api) => api.goToXY(args.x, args.y)
@@ -43,7 +43,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'point in direction'}, {type: 'input', key: 'direction'}],
-                inputs: { direction: { value: 90, shape: 'reporter', min: -179, max: 180, step: 1, slider: true } }
+                inputs: { direction: { value: 90, shape: 'reporter', acceptedShapes: ['any'], min: -179, max: 180, step: 1, slider: true } }
             },
             onExecute: (args, api) => api.pointInDirection(args.direction)
         },
@@ -51,7 +51,10 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'point towards'}, {type: 'dropdown', key: 'target'}],
-                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [] } }
+                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [
+                    {label: 'mouse-pointer', value: '_mouse_'}, 
+                    {label: 'random position', value: '_random_'}
+                ] } }
             },
             onExecute: (args, api) => api.pointTowards(args.target)
         },
@@ -59,7 +62,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change x by'}, {type: 'input', key: 'dx'}],
-                inputs: { dx: { value: 10, shape: 'reporter' } }
+                inputs: { dx: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.changeX(args.dx)
         },
@@ -67,7 +70,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set x to'}, {type: 'input', key: 'x'}],
-                inputs: { x: { value: 0, shape: 'reporter' } }
+                inputs: { x: { value: 0, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.goToXY(args.x, api.getY())
         },
@@ -75,7 +78,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change y by'}, {type: 'input', key: 'dy'}],
-                inputs: { dy: { value: 10, shape: 'reporter' } }
+                inputs: { dy: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.changeY(args.dy)
         },
@@ -83,7 +86,7 @@ const MOTION_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set y to'}, {type: 'input', key: 'y'}],
-                inputs: { y: { value: 0, shape: 'reporter' } }
+                inputs: { y: { value: 0, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.goToXY(api.getX(), args.y)
         },

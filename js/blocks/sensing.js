@@ -8,41 +8,50 @@ const SENSING_CATEGORY = {
             spec: {
                 shape: 'boolean', outputType: 'boolean',
                 layout: [{type: 'label', text: 'touching'}, {type: 'dropdown', key: 'target'}, {type: 'label', text: '?'}],
-                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [] } }
+                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [
+                    {label: 'mouse-pointer', value: '_mouse_'}
+                ] } }
             },
             onExecute: (args, api) => {
-                const sprite = api.getSprite(); 
-                if (!sprite) return false;
-                
-                let targetX, targetY, targetWidth, targetHeight;
-                if (args.target === '_mouse_') {
-                    targetX = api.getMouseX();
-                    targetY = api.getMouseY();
-                    targetWidth = 1;
-                    targetHeight = 1;
-                } else {
-                    const targetSprite = Raccoon.sprites[args.target] || Raccoon.clones[args.target];
-                    if (!targetSprite || !targetSprite.visible || !targetSprite.costume) return false;
-                    targetX = targetSprite.x;
-                    targetY = targetSprite.y;
-                    targetWidth = targetSprite.costume.width * (targetSprite.size / 100);
-                    targetHeight = targetSprite.costume.height * (targetSprite.size / 100);
-                }
-                
-                const spriteWidth = sprite.costume.width * (sprite.size / 100);
-                const spriteHeight = sprite.costume.height * (sprite.size / 100);
+                const s = Raccoon.execution.snapshot.sprites[api.spriteId] || Raccoon.execution.snapshot.clones[api.spriteId];
+                if (!s || !s.visible || !s.costume) return false;
 
-                return sprite.x - spriteWidth / 2 < targetX + targetWidth / 2 &&
-                       sprite.x + spriteWidth / 2 > targetX - targetWidth / 2 &&
-                       sprite.y - spriteHeight / 2 < targetY + targetHeight / 2 &&
-                       sprite.y + spriteHeight / 2 > targetY - targetHeight / 2;
+                const sWidth = s.costume.width * (s.baseScale || 1.0) * (s.size / 100);
+                const sHeight = s.costume.height * (s.baseScale || 1.0) * (s.size / 100);
+                const sLeft = s.x - sWidth / 2;
+                const sRight = s.x + sWidth / 2;
+                const sTop = s.y + sHeight / 2;
+                const sBottom = s.y - sHeight / 2;
+
+                let targetLeft, targetRight, targetTop, targetBottom;
+
+                if (args.target === '_mouse_') {
+                    const { x, y } = Raccoon.mouse;
+                    targetLeft = x; targetRight = x;
+                    targetTop = y; targetBottom = y;
+                } else {
+                    const targetSprite = Raccoon.execution.snapshot.sprites[args.target] || Raccoon.execution.snapshot.clones[args.target];
+                    if (!targetSprite || !targetSprite.visible || !targetSprite.costume) return false;
+                    
+                    const tWidth = targetSprite.costume.width * (targetSprite.baseScale || 1.0) * (targetSprite.size / 100);
+                    const tHeight = targetSprite.costume.height * (targetSprite.baseScale || 1.0) * (targetSprite.size / 100);
+                    targetLeft = targetSprite.x - tWidth / 2;
+                    targetRight = targetSprite.x + tWidth / 2;
+                    targetTop = targetSprite.y + tHeight / 2;
+                    targetBottom = targetSprite.y - tHeight / 2;
+                }
+
+                // AABB collision detection
+                return sLeft < targetRight && sRight > targetLeft && sBottom < targetTop && sTop > targetBottom;
             }
         },
         'sensing_distanceto': {
             spec: {
                 shape: 'reporter', outputType: 'reporter',
                 layout: [{type: 'label', text: 'distance to'}, {type: 'dropdown', key: 'target'}],
-                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [] } }
+                inputs: { target: { value: '_mouse_', shape: 'reporter', dynamic: true, options: [
+                     {label: 'mouse-pointer', value: '_mouse_'}
+                ] } }
             },
             onExecute: (args, api) => api.distanceTo(args.target)
         },

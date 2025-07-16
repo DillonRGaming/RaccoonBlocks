@@ -9,8 +9,9 @@ const LOOKS_CATEGORY = {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'say'}, {type: 'input', key: 'message'}, {type: 'label', text: 'for'}, {type: 'input', key: 'secs'}, {type: 'label', text: 'seconds'}],
                 inputs: {
-                    message: { value: 'Hello!', shape: 'reporter' },
-                    secs: { value: 2, shape: 'reporter' }
+                    // Requirement 1: Input Shape Constraints
+                    message: { value: 'Hello!', shape: 'reporter', acceptedShapes: ['any'] },
+                    secs: { value: 2, shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
             onExecute: (args, api) => api.say(args.message, args.secs)
@@ -19,7 +20,8 @@ const LOOKS_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'say'}, {type: 'input', key: 'message'}],
-                inputs: { message: { value: 'Hello!', shape: 'reporter' } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { message: { value: 'Hello!', shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.say(args.message, null)
         },
@@ -35,7 +37,8 @@ const LOOKS_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set size to'}, {type: 'input', key: 'size'}, {type: 'label', text: '%'}],
-                inputs: { size: { value: 100, shape: 'reporter' } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { size: { value: 100, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.setSize(args.size)
         },
@@ -43,7 +46,8 @@ const LOOKS_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change size by'}, {type: 'input', key: 'change'}],
-                inputs: { change: { value: 10, shape: 'reporter' } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { change: { value: 10, shape: 'reporter', acceptedShapes: ['any'] } }
             },
             onExecute: (args, api) => api.changeSizeBy(args.change)
         },
@@ -58,7 +62,8 @@ const LOOKS_CATEGORY = {
             spec: {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'go to'}, {type: 'dropdown', key: 'layer'}, {type: 'label', text: 'layer'}],
-                inputs: { layer: { value: 'front', options: [{label: 'front', value: 'front'}, {label: 'back', value: 'back'}] } }
+                // Requirement 1: Input Shape Constraints
+                inputs: { layer: { value: 'front', shape: 'reporter', acceptedShapes: ['reporter'], options: [{label: 'front', value: 'front'}, {label: 'back', value: 'back'}] } }
             },
             onExecute: (args, api) => api.goToLayer(args.layer)
         },
@@ -67,8 +72,9 @@ const LOOKS_CATEGORY = {
                 shape: 'stack',
                 layout: [{type: 'label', text: 'go'}, {type: 'dropdown', key: 'direction'}, {type: 'input', key: 'num'}, {type: 'label', text: 'layers'}],
                 inputs: {
-                    direction: { value: 'forward', options: [{label: 'forward', value: 'forward'}, {label: 'backward', value: 'backward'}] },
-                    num: { value: 1, shape: 'reporter' }
+                    // Requirement 1: Input Shape Constraints
+                    direction: { value: 'forward', shape: 'reporter', acceptedShapes: ['reporter'], options: [{label: 'forward', value: 'forward'}, {label: 'backward', value: 'backward'}] },
+                    num: { value: 1, shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
             onExecute: (args, api) => api.goLayers(args.direction, args.num)

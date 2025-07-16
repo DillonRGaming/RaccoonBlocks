@@ -14,28 +14,31 @@ const DATA_CATEGORY = {
         },
         'data_setvariableto': {
             spec: {
+                requiresData: true, // This block requires at least one variable to exist
                 shape: 'stack',
                 layout: [{type: 'label', text: 'set'}, {type: 'dropdown', key: 'variable'}, {type: 'label', text: 'to'}, {type: 'input', key: 'value'}],
                 inputs: {
                     variable: { value: '', shape: 'reporter', dynamic: true, options: [] },
-                    value: { value: 0, shape: 'reporter' }
+                    value: { value: 0, shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
             onExecute: (args, api) => api.setVariable(args.variable, args.value)
         },
         'data_changevariableby': {
             spec: {
+                requiresData: true,
                 shape: 'stack',
                 layout: [{type: 'label', text: 'change'}, {type: 'dropdown', key: 'variable'}, {type: 'label', text: 'by'}, {type: 'input', key: 'value'}],
                 inputs: {
                     variable: { value: '', shape: 'reporter', dynamic: true, options: [] },
-                    value: { value: 1, shape: 'reporter' }
+                    value: { value: 1, shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
             onExecute: (args, api) => api.changeVariableBy(args.variable, args.value)
         },
         'data_showvariable': {
             spec: {
+                requiresData: true,
                 shape: 'stack',
                 layout: [{type: 'label', text: 'show variable'}, {type: 'dropdown', key: 'variable'}],
                 inputs: { variable: { value: '', shape: 'reporter', dynamic: true, options: [] } }
@@ -44,6 +47,7 @@ const DATA_CATEGORY = {
         },
         'data_hidevariable': {
             spec: {
+                requiresData: true,
                 shape: 'stack',
                 layout: [{type: 'label', text: 'hide variable'}, {type: 'dropdown', key: 'variable'}],
                 inputs: { variable: { value: '', shape: 'reporter', dynamic: true, options: [] } }

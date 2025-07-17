@@ -11,7 +11,7 @@ window.Raccoon = {
     REPORTER_BUBBLE_LIFETIME: 1500,
     EMPTY_BOOLEAN_INPUT_WIDTH: 40,
     DEFAULT_SPRITE_DIMENSION: 90, 
-    PALETTE_BLOCK_SPACING: 10, // New variable for palette spacing
+    PALETTE_BLOCK_SPACING: 10,
 
     view: { 
         x: 0, 
@@ -41,7 +41,7 @@ window.Raccoon = {
 
     blockDefinitions: {},
     categoryData: {},
-    BlockColors: {}, // Add BlockColors object
+    BlockColors: {},
     
     execution: { 
         isStopping: false, 
@@ -60,13 +60,28 @@ window.Raccoon = {
     },
     keys: new Set(),
 
+    logToConsole(message, type = 'info') {
+        const consoleLogEl = document.getElementById('console-log');
+        if (!consoleLogEl) return;
+        const logEntry = document.createElement('div');
+        logEntry.className = `console-entry type-${type}`;
+        const timestamp = new Date().toLocaleTimeString();
+        const messageEl = document.createElement('span');
+        messageEl.className = 'message';
+        messageEl.textContent = message;
+        logEntry.innerHTML = `<span class="timestamp">${timestamp}</span>`;
+        logEntry.appendChild(messageEl);
+        consoleLogEl.appendChild(logEntry);
+        consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+    },
+
     registerCategory(category) {
         this.categoryData[category.id] = { 
             label: category.label, 
             icon: category.icon, 
             color: category.color 
         };
-        this.BlockColors[category.id] = category.color; // Store the color
+        this.BlockColors[category.id] = category.color;
         for (const blockType in category.blocks) {
             this.blockDefinitions[blockType] = category.blocks[blockType];
             this.blockDefinitions[blockType].spec.type = blockType;
@@ -82,7 +97,7 @@ window.Raccoon = {
         const blocks = [];
         for (const blockType in this.blockDefinitions) {
             if (this.blockDefinitions[blockType].spec.category === categoryId) {
-                blocks.push(this.blockDefinitions[blockType]); // Push the entire block definition, not just the spec
+                blocks.push(this.blockDefinitions[blockType]);
             }
         }
         return blocks;

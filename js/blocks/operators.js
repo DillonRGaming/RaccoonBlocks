@@ -6,15 +6,16 @@ const OPERATORS_CATEGORY = {
     blocks: {
         'operator_multipurpose': {
             spec: {
-                shape: 'reporter', // Default shape
-                outputType: 'reporter', // Default output
+                shape: 'reporter',
+                outputType: 'reporter',
                 layout: [{type: 'input', key: 'a'}, {type: 'dropdown', key: 'op'}, {type: 'input', key: 'b'}],
                 inputs: {
                     a: { value: '', shape: 'reporter', acceptedShapes: ['any'] },
                     op: {
                         value: '+',
                         shape: 'reporter',
-                        isRoundedSquare: true,
+                        searchable: false,
+                        menuClass: 'square-menu',
                         options: [
                             {label: '+', value: '+'}, {label: '-', value: '-'},
                             {label: '×', value: '*'}, {label: '/', value: '/'},
@@ -25,7 +26,6 @@ const OPERATORS_CATEGORY = {
                     b: { value: '', shape: 'reporter', acceptedShapes: ['any'] }
                 }
             },
-            // Dynamic shape based on operator
             getShape: (blockData) => (['<', '=', '>'].includes(blockData.inputs.op.value)) ? 'boolean' : 'reporter',
             onExecute: (args) => {
                 const op = args.op;
@@ -41,6 +41,15 @@ const OPERATORS_CATEGORY = {
                 } else if (['<', '=', '>'].includes(op)) {
                     const valA = String(args.a).toLowerCase();
                     const valB = String(args.b).toLowerCase();
+                    const numA = Number(args.a);
+                    const numB = Number(args.b);
+                    if(!isNaN(numA) && !isNaN(numB)){
+                        switch(op) {
+                            case '<': return numA < numB;
+                            case '=': return numA == numB;
+                            case '>': return numA > numB;
+                        }
+                    }
                     switch(op) {
                         case '<': return valA < valB;
                         case '=': return valA == valB;
@@ -59,7 +68,8 @@ const OPERATORS_CATEGORY = {
                     op: {
                         value: 'and',
                         shape: 'reporter',
-                        isRoundedSquare: true,
+                        searchable: false,
+                        menuClass: 'square-menu',
                         options: [
                             {label: 'and', value: 'and'},
                             {label: 'or', value: 'or'},
@@ -69,7 +79,6 @@ const OPERATORS_CATEGORY = {
                     b: { blockId: null, shape: 'boolean', acceptedShapes: ['boolean'] } 
                 }
             },
-            // Dynamic layout based on operator
             getLayout: (blockData) => {
                 if (blockData.inputs.op.value === 'not') {
                     return [{type: 'dropdown', key: 'op'}, {type: 'input', key: 'a', shape: 'boolean'}];
@@ -164,6 +173,8 @@ const OPERATORS_CATEGORY = {
                     op: {
                         value: 'abs',
                         shape: 'reporter',
+                        searchable: false,
+                        menuClass: 'square-menu',
                         options: [
                             {label: 'abs', value: 'abs'}, {label: 'floor', value: 'floor'},
                             {label: 'ceiling', value: 'ceiling'}, {label: 'sqrt', value: 'sqrt'},

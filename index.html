@@ -17,6 +17,7 @@
             </div>
         </div>
         <div class="top-bar-controls">
+            <button id="toggle-console-btn" title="Toggle Console"><i class="fa-solid fa-terminal"></i></button>
             <button id="toggle-right-sidebar-btn" title="Toggle Stage Area"><i class="fa-solid fa-bars"></i></button>
         </div>
     </header>
@@ -31,7 +32,8 @@
         <section class="center-area" id="center-area">
             <div id="workspace" class="script-area">
                  <div id="block-container"></div>
-            </section>
+            </div>
+        </section>
 
         <aside class="right-area" id="right-area">
              <div class="stage-container" id="stage-container">
@@ -114,6 +116,18 @@
     </div>
     
     <input type="file" id="costume-file-input" accept="image/*" style="display:none;">
+
+    <div id="console-widget" class="console-widget hidden">
+        <div class="console-header">
+            <span class="console-title"><i class="fa-solid fa-terminal"></i> Console</span>
+            <div class="console-buttons">
+                <button class="console-clear-btn" title="Clear Console"><i class="fa-solid fa-ban"></i></button>
+                <button class="console-close-btn" title="Close Console"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="console-log" id="console-log"></div>
+        <div class="console-resize-handle"></div>
+    </div>
 
     <script src="../js/raccoon/core.js"></script>
     <script src="../js/raccoon/utils.js"></script>

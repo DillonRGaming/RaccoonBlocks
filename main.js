@@ -22,6 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const fullscreenBtn = document.getElementById('fullscreen-btn');
     const workspaceEl = document.getElementById('workspace');
 
+    const consoleWidget = document.getElementById('console-widget');
+    const toggleConsoleBtn = document.getElementById('toggle-console-btn');
+    const closeConsoleBtn = consoleWidget.querySelector('.console-close-btn');
+    const clearConsoleBtn = consoleWidget.querySelector('.console-clear-btn');
+    const consoleLogEl = document.getElementById('console-log');
+
     const spriteInfoPanel = { 
         name: document.getElementById('sprite-name-input'), 
         x: document.getElementById('sprite-x-input'), 
@@ -110,7 +116,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (success) {
             const activeCategory = categorySwitcherEl.querySelector('.active')?.dataset.category;
-            // Always re-populate palette for data/lists if active, as new items affect available blocks
             if (activeCategory === 'data' || activeCategory === 'lists') {
                 populatePalette(activeCategory);
             }
@@ -194,16 +199,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ? structuredClone(blockDef.spec)
             : JSON.parse(JSON.stringify(blockDef.spec));
         
-        // Manually add non-cloneable properties
         specCopy.type = blockDef.spec.type; 
 
         const activeSprite = Raccoon.getActiveSprite();
-        // Dynamic options for inputs like variables, lists, targets
         if (specCopy.inputs) {
             for (const key in specCopy.inputs) {
                 const inputSpec = specCopy.inputs[key];
                 if (inputSpec.dynamic) {
-                    let options = inputSpec.options || []; // Start with any predefined options
+                    let options = inputSpec.options || [];
                     if (key === 'variable') {
                         const varNames = activeSprite ? [...new Set([...Object.keys(Raccoon.variables), ...Object.keys(activeSprite.localVariables)])] : [...Object.keys(Raccoon.variables)];
                         options = varNames.map(v => ({ label: v, value: v }));
@@ -213,13 +216,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         options = listNames.map(v => ({ label: v, value: v }));
                         specCopy.inputs.list.value = listNames[0] || '';
                     } else if (key === 'target') {
-                        // For 'point towards' target dropdown
-                        options = [{label: 'mouse-pointer', value: '_mouse_'}, {label: 'random position', value: '_random_'}]; // Add _random_ as a default
+                        options = [{label: 'mouse-pointer', value: '_mouse_'}, {label: 'random position', value: '_random_'}];
                         Object.values(Raccoon.sprites).forEach(s => {
-                            if (s.id !== activeSprite.id) options.push({label: s.name, value: s.id});
+                            if (activeSprite && s.id !== activeSprite.id) options.push({label: s.name, value: s.id});
                         });
                     }
-                    inputSpec.options = options; // Update options on the specCopy
+                    inputSpec.options = options;
                 }
             }
         }
@@ -279,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
-                Raccoon.stage.render(); // Re-render stage to update monitors
+                Raccoon.stage.render();
             });
 
             checkboxLabel.appendChild(checkbox);
@@ -340,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Object.keys(globalItems).forEach(name => {
                     const item = globalItems[name];
                     const spec = { type: isData ? 'data_variable' : 'data_listcontents', monitorLabel: name, monitored: item.visible, category: categoryId, shape: 'reporter', outputType: 'reporter', layout: [ {type:'monitor'}, {type: 'label', text: name} ], inputs: { [isData ? 'variable' : 'list']: { value: name } } };
-                    const blockEl = createPaletteBlock(spec);
+                    const blockEl = createPaletteBlock({spec});
                     if (blockEl) paletteEl.appendChild(blockEl);
                 });
             }
@@ -350,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Object.keys(localItems).forEach(name => {
                     const item = localItems[name];
                     const spec = { type: isData ? 'data_variable' : 'data_listcontents', monitorLabel: `${activeSprite.name}: ${name}`, monitored: item.visible, category: categoryId, shape: 'reporter', outputType: 'reporter', layout: [ {type:'monitor'}, {type: 'label', text: name} ], inputs: { [isData ? 'variable' : 'list']: { value: name } } };
-                    const blockEl = createPaletteBlock(spec);
+                    const blockEl = createPaletteBlock({spec});
                     if (blockEl) paletteEl.appendChild(blockEl);
                 });
             }
@@ -421,6 +423,59 @@ document.addEventListener('DOMContentLoaded', () => {
         updateAllUI(); 
     }
 
+    function setupConsole() {
+        toggleConsoleBtn.addEventListener('click', () => consoleWidget.classList.toggle('hidden'));
+        closeConsoleBtn.addEventListener('click', () => consoleWidget.classList.add('hidden'));
+        clearConsoleBtn.addEventListener('click', () => consoleLogEl.innerHTML = '');
+
+        let isDragging = false, isResizing = false;
+        let startX, startY, startLeft, startTop, startWidth, startHeight;
+
+        const header = consoleWidget.querySelector('.console-header');
+        const resizeHandle = consoleWidget.querySelector('.console-resize-handle');
+
+        header.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) return;
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = consoleWidget.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            document.body.style.userSelect = 'none';
+        });
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = consoleWidget.offsetWidth;
+            startHeight = consoleWidget.offsetHeight;
+            document.body.style.userSelect = 'none';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                consoleWidget.style.left = `${startLeft + dx}px`;
+                consoleWidget.style.top = `${startTop + dy}px`;
+            }
+            if (isResizing) {
+                const dw = e.clientX - startX;
+                const dh = e.clientY - startY;
+                consoleWidget.style.width = `${startWidth + dw}px`;
+                consoleWidget.style.height = `${startHeight + dh}px`;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            isResizing = false;
+            document.body.style.userSelect = '';
+        });
+    }
+
     runButtonEl.addEventListener('click', () => Raccoon.start());
     stopButtonEl.addEventListener('click', () => Raccoon.stopAllScripts());
     toggleSidebarBtn.addEventListener('click', () => leftSidebar.classList.toggle('hidden'));
@@ -442,7 +497,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (blockEl) {
             showContextMenu(e, { type: 'block', id: blockEl.id });
         } else if (!e.target.closest('.modal-overlay, .context-menu, .dropdown-menu, .color-picker, .block-slider')) {
-            showContextMenu(e, { type: 'workspace' });
         }
     });
     
@@ -516,6 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Raccoon.uiUpdateCallback = updateAllUI;
         
         setupCategories();
+        setupConsole();
         updateAllUI();
     }
     

@@ -1,41 +1,31 @@
 Object.assign(window.Raccoon, {
     updateViewTransform() { 
-        // Apply transformation to the block container for panning and zooming
         if (this.blockContainer) {
             this.blockContainer.style.transform = `translate(${this.view.x}px, ${this.view.y}px) scale(${this.view.zoom})`; 
         }
-        // Update background position and size for the workspace grid
         if (this.workspace) { 
             this.workspace.style.backgroundPosition = `${this.view.x}px ${this.view.y}px`; 
             const bgSize = 20 * this.view.zoom; 
             this.workspace.style.backgroundSize = `${bgSize}px ${bgSize}px`; 
         } 
-        // Requirement 4: Ensure reporter output stays with its block during pan/zoom
         if (this.stage && this.stage.reporterOutputEl && this.stage.reporterOutputEl.style.display === 'block') {
             const blockId = this.stage.reporterOutputEl.dataset.blockId;
             const blockEl = document.getElementById(blockId);
             if(blockEl) {
-                // Get block position relative to viewport
                 const rect = blockEl.getBoundingClientRect();
-                // Position output bubble to the left of the block
-                const monitorCheckbox = blockEl.querySelector('.monitor-checkbox');
-                const checkboxWidth = monitorCheckbox ? monitorCheckbox.offsetWidth : 0;
-                // Requirement 2: Move monitor checkboxes to the left of the reporter
-                this.stage.reporterOutputEl.style.left = `${rect.left - this.stage.reporterOutputEl.offsetWidth - 10 - checkboxWidth}px`; // 10px padding
-                this.stage.reporterOutputEl.style.top = `${rect.top + rect.height / 2 - this.stage.reporterOutputEl.offsetHeight / 2}px`;
+                this.stage.reporterOutputEl.style.left = `${rect.left + rect.width / 2}px`;
+                this.stage.reporterOutputEl.style.top = `${rect.bottom}px`;
             } else {
-                // If block is no longer in DOM, hide the reporter output
                 this.hideReporterOutput();
             }
         }
     },
     
     renderBlock(blockData, isPalette = false) {
-        // Provide fallback dimensions if calculations aren't ready yet or are invalid
         const width = typeof blockData.width === 'number' && !isNaN(blockData.width) && blockData.width > 0 ? blockData.width : 100;
         const height = typeof blockData.height === 'number' && !isNaN(blockData.height) && blockData.height > 0 ? blockData.height : 40;
 
-        if (isNaN(width) || isNaN(height)) { // Double check after fallback, if still NaN, skip.
+        if (isNaN(width) || isNaN(height)) {
              console.warn("Final block dimensions are invalid, skipping render:", blockData);
              return null;
         }
@@ -50,7 +40,6 @@ Object.assign(window.Raccoon, {
             svg.id = blockData.id;
             svg.classList.add('block');
             svg.dataset.spriteId = blockData.spriteId;
-            // Hide blocks of inactive sprites
             if(this.activeSpriteId !== blockData.spriteId) svg.classList.add('hidden');
             this.blockContainer.appendChild(svg);
         }
@@ -66,13 +55,10 @@ Object.assign(window.Raccoon, {
             svg.style.left = `${blockData.position.x}px`;
             svg.style.top = `${blockData.position.y}px`;
             if (!svg.classList.contains('dragging')) {
-                svg.style.zIndex = blockData.depth || 0; // Use depth for z-index
+                svg.style.zIndex = blockData.depth || 0;
             }
             if (!svg.getAttribute('data-event-listeners-attached')) {
-            // Only attach event listener if not already attached
-            if (!svg.getAttribute('data-event-listeners-attached')) {
                 svg.addEventListener('mousedown', (e) => {
-                    // Prevent drag if clicking on an input element within the block
                     if (e.target.closest('.block-input, .dropdown-trigger, .color-input-swatch, .slider-input-display')) {
                         return;
                     }
@@ -80,9 +66,7 @@ Object.assign(window.Raccoon, {
                 });
                 svg.setAttribute('data-event-listeners-attached', 'true');
             }
-            }
         } else {
-            // Prevent native drag for palette blocks (handled by custom drag logic)
             svg.addEventListener('dragstart', (e) => e.preventDefault());
         }
 
@@ -96,9 +80,7 @@ Object.assign(window.Raccoon, {
         return svg;
     },
 
-    // Calculates block dimensions based on its layout and input content
     updateLayout(blockData, isPalette) {
-        // Requirement 4: Check for dynamic layout/shape updates before calculating
         const blockDef = this.blockDefinitions[blockData.type];
         if (!isPalette && blockDef) {
             if (typeof blockDef.getLayout === 'function') {
@@ -113,8 +95,7 @@ Object.assign(window.Raccoon, {
             }
         }
 
-        let currentContentWidth = 10; // Initial padding
-        // Get all blocks for the current sprite or an empty object if palette
+        let currentContentWidth = 10;
         const allBlocksForSprite = isPalette ? {} : this.getAllBlocksForSprite(blockData.spriteId);
         
         if (blockData.layout) {
@@ -130,23 +111,19 @@ Object.assign(window.Raccoon, {
                 } else if (item.type === 'input' || item.type === 'dropdown') {
                     const inputData = blockData.inputs ? blockData.inputs[item.key] : null;
                     if (!inputData) {
-                        itemWidth = 30; // Default for missing inputData
+                        itemWidth = 30;
                     } else {
-                        let resolvedWidth = 30; // Default fallback for input width
-
+                        let resolvedWidth = 30;
                         const connectedBlock = (!isPalette && inputData.blockId && allBlocksForSprite) ? allBlocksForSprite[inputData.blockId] : null;
 
                         if (connectedBlock && typeof connectedBlock.width === 'number' && !isNaN(connectedBlock.width)) {
-                            // If an input block is connected, its width determines the input slot width
                             resolvedWidth = connectedBlock.width;
-                        } else { // No connected block, determine width from inputData properties
+                        } else {
                             const inputShape = inputData.shape;
-
                             if (inputShape === 'boolean') {
                                 resolvedWidth = this.EMPTY_BOOLEAN_INPUT_WIDTH;
                             } else if (item.type === 'dropdown') {
                                 let options = inputData.options || [];
-                                // Dynamically update dropdown options if specified
                                 if (inputData.dynamic) {
                                     const sprite = this.getActiveSprite();
                                     if (item.key === 'variable') {
@@ -157,82 +134,74 @@ Object.assign(window.Raccoon, {
                                          options = listNames.map(v => ({ label: v, value: v }));
                                     } else if (item.key === 'target') {
                                         options = [{label: 'mouse-pointer', value: '_mouse_'}];
-                                        // Add other sprites as targets
                                         Object.values(this.sprites).forEach(s => {
                                             if (s.id !== this.activeSpriteId) options.push({label: s.name, value: s.id});
                                         });
                                     }
-                                    inputData.options = options; // Update options in blockData
+                                    inputData.options = options;
                                 }
                                 
-                                // Calculate dropdown width based on text content
                                 const currentOption = options.find(o => String(o.value) === String(inputData.value));
                                 const label = currentOption ? currentOption.label : (inputData.value || '');
-                                const measuredWidth = this.measureText(label) + 30; // Text width + icon/padding
-                                resolvedWidth = Math.max(45, measuredWidth); // Minimum width for dropdown
+                                const measuredWidth = this.measureText(label) + 30;
+                                resolvedWidth = Math.max(45, measuredWidth);
                             } else if (inputShape === 'color') {
-                                resolvedWidth = 40; // Fixed width for color input
+                                resolvedWidth = 40;
                             } else if (inputShape === 'slider') {
-                                resolvedWidth = 80; // Fixed width for slider input
-                            } else if (item.type === 'input') { // Generic text input (could be reporter output or simple string)
+                                resolvedWidth = 80;
+                            } else if (item.type === 'input') {
                                 const textWidth = this.measureText(String(inputData.value));
-                                resolvedWidth = Math.max(30, textWidth + 16); // Minimum width for text input
+                                resolvedWidth = Math.max(30, textWidth + 16);
                             }
                         }
 
-                        inputData.width = resolvedWidth; // Store calculated width on inputData
+                        inputData.width = resolvedWidth;
                         itemWidth = resolvedWidth;
                     }
                 }
                 
                 if (itemWidth > 0 && index > 0 && blockData.layout[index-1].type !== 'monitor') { 
-                    currentContentWidth += PADDING_BETWEEN_ITEMS; // Add spacing between elements
+                    currentContentWidth += PADDING_BETWEEN_ITEMS;
                 }
                 currentContentWidth += itemWidth;
             });
         }
         
-        // Block width is content width plus padding
         blockData.width = Math.max(blockData.minWidth || 0, currentContentWidth + 10);
 
-        // Requirement 5: C-Block dynamic height calculation
         if (blockData.shape && blockData.shape.startsWith('c_shape')) {
-            blockData.width = Math.max(150, blockData.width); // C-shapes have a minimum width
+            blockData.width = Math.max(150, blockData.width);
             const cTopH = 28, cMidH = 24, cBottomH = 24, cInnerMinH = 32;
             
             let innerHeight1 = cInnerMinH;
             if (!isPalette && blockData.child && allBlocksForSprite && allBlocksForSprite[blockData.child]) {
                 innerHeight1 = Math.max(cInnerMinH, this.calculateStackHeight(allBlocksForSprite[blockData.child], allBlocksForSprite));
             }
-            blockData.cInnerHeight1 = innerHeight1; // Store inner height for rendering
+            blockData.cInnerHeight1 = innerHeight1;
 
             if (blockData.type === 'control_if_else') {
                 let innerHeight2 = cInnerMinH;
                 if (!isPalette && blockData.child2 && allBlocksForSprite && allBlocksForSprite[blockData.child2]) {
                     innerHeight2 = Math.max(cInnerMinH, this.calculateStackHeight(allBlocksForSprite[blockData.child2], allBlocksForSprite));
                 }
-                blockData.cInnerHeight2 = innerHeight2; // Store second inner height
+                blockData.cInnerHeight2 = innerHeight2;
                 blockData.height = cTopH + innerHeight1 + cMidH + innerHeight2 + cBottomH;
             } else {
                 blockData.height = cTopH + innerHeight1 + cBottomH;
             }
-        } else if (blockData.outputType) { // Reporter and Boolean blocks have fixed height
+        } else if (blockData.outputType) {
             blockData.height = 28;
-        } else { // Stack blocks have fixed height
+        } else if (blockData.shape === 'hat') {
             blockData.height = 40;
-        }
-        // Requirement 1: Hat blocks have a fixed height and shape
-        if (blockData.shape === 'hat') {
-            blockData.height = 50; // Fixed height for hat blocks
+        } else {
+            blockData.height = 40;
         }
     },
     
-    // Renders the internal content (labels, inputs, icons) of a block
     renderBlockContent(svg, blockData, mainBlockPath, isPalette) {
-        let xOffset = 10; // Initial X offset for content
-        const C_SHAPE_HEADER_H = 28; // Standard height of C-block header
+        let xOffset = 10;
+        const C_SHAPE_HEADER_H = 28;
         const isCShape = blockData.shape && blockData.shape.startsWith('c_shape');
-        // Vertical center for content based on block shape
         let contentVerticalCenter = isCShape ? (C_SHAPE_HEADER_H / 2) : (blockData.height / 2 || 0); 
         const blocks = isPalette ? {} : this.getAllBlocksForSprite(blockData.spriteId);
         const PADDING_BETWEEN_ITEMS = 8;
@@ -241,7 +210,6 @@ Object.assign(window.Raccoon, {
 
         blockData.layout.forEach((item, index) => {
             const currentX = xOffset;
-            // Skip monitor items as they are rendered separately
             if (item.type === 'monitor') return;
 
             const textContent = item.text || '';
@@ -272,12 +240,12 @@ Object.assign(window.Raccoon, {
             } else if (item.type === 'input' || item.type === 'dropdown') {
                 const inputData = blockData.inputs ? blockData.inputs[item.key] : null;
                 if (!inputData) {
-                    xOffset += (item.width || 30) + PADDING_BETWEEN_ITEMS; // Use a default width if inputData is missing
+                    xOffset += (item.width || 30) + PADDING_BETWEEN_ITEMS;
                     return;
                 }
 
                 let inputSlotWidth = inputData.width || 30;
-                let inputSlotHeight = 24; // Default input height
+                let inputSlotHeight = 24;
                 
                 const hasConnectedBlock = !isPalette && inputData.blockId && blocks && blocks[inputData.blockId];
                 if (hasConnectedBlock) {
@@ -286,7 +254,6 @@ Object.assign(window.Raccoon, {
                     inputSlotHeight = connectedBlock.height;
                 }
 
-                // Create the SVG path for the input socket
                 const socket = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 socket.classList.add('input-socket');
                 let socketPathD;
@@ -298,19 +265,20 @@ Object.assign(window.Raccoon, {
                 } else if (inputShape === 'boolean') {
                     const socketHexH = inputSlotHeight/2;
                     socketPathD = `M ${socketHexH} 0 H ${inputSlotWidth - socketHexH} L ${inputSlotWidth} ${socketHexH} L ${inputSlotWidth - socketHexH} ${inputSlotHeight} H ${socketHexH} L 0 ${socketHexH} Z`;
-                } else { // Fallback for other shapes or unknown
+                } else {
                     socketPathD = `M 0 0 H ${inputSlotWidth} V ${inputSlotHeight} H 0 Z`;
                 }
-                if (item.type === 'dropdown') { socket.classList.add('custom-dropdown'); } // Add custom class for styling dropdowns
+                if (item.type === 'dropdown') { socket.classList.add('custom-dropdown'); }
+                if(inputData.menuClass) socket.classList.add(inputData.menuClass);
+
                 socket.setAttribute('transform', `translate(${currentX}, ${contentVerticalCenter - inputSlotHeight/2})`);
                 socket.setAttribute('d', socketPathD);
-                svg.insertBefore(socket, mainBlockPath.nextSibling); // Insert after main path
+                svg.insertBefore(socket, mainBlockPath.nextSibling);
 
-                // Render HTML elements for non-connected inputs (e.g., text fields, dropdowns)
                 if (!hasConnectedBlock && inputData.shape !== 'boolean') {
                     const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
                     foreignObject.setAttribute('x', currentX);
-                    foreignObject.setAttribute('y', contentVerticalCenter - 10); // Adjusted Y for better visual centering
+                    foreignObject.setAttribute('y', contentVerticalCenter - 12);
                     foreignObject.setAttribute('width', inputSlotWidth);
                     foreignObject.setAttribute('height', 24);
 
@@ -349,7 +317,6 @@ Object.assign(window.Raccoon, {
                                 const realBlock = this.getAllBlocksForSprite(blockData.spriteId)[blockData.id];
                                 if(realBlock) realBlock.inputs[item.key].value = val;
                             }
-                            // Re-render the block to update its width if text changes
                             this.updateBlockPositions(blockData.id);
                         });
                         wrapper.appendChild(inputEl);
@@ -371,11 +338,10 @@ Object.assign(window.Raccoon, {
             }
         });
 
-        // Render "else" label for if-else blocks
         if (blockData.type === 'control_if_else') {
             const cTopH = 28, cMidH = 24, cArmIndent = 20;
             const cInnerMinH = 32; 
-            const innerH1 = blockData.cInnerHeight1 || cInnerMinH; // Use calculated inner height
+            const innerH1 = blockData.cInnerHeight1 || cInnerMinH;
             
             const elseLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             elseLabel.textContent = 'else';
@@ -387,15 +353,13 @@ Object.assign(window.Raccoon, {
         }
     },
 
-    // Updates the positions of all blocks in a stack recursively, starting from the root
     updateBlockPositions(startBlockId) {
-        // Find the absolute root of the stack to ensure correct recalculation from top
+        if (!startBlockId) return;
         const rootId = this.getStackRoot(startBlockId, this.activeSpriteId)?.id || startBlockId;
         const allBlocks = this.getActiveBlocks();
         const layoutVisited = new Set();
         const positionVisited = new Set();
 
-        // First pass: Calculate layout (dimensions) for all blocks in the stack
         const layoutPass = (blockId) => {
             if (!blockId || layoutVisited.has(blockId)) return;
             layoutVisited.add(blockId);
@@ -403,7 +367,6 @@ Object.assign(window.Raccoon, {
             const block = allBlocks[blockId];
             if (!block) return;
     
-            // Recursively calculate layout for children first (bottom-up for C-shapes, inputs)
             if (block.next) layoutPass(block.next);
             if (block.inputs) {
                 Object.values(block.inputs).forEach(input => {
@@ -413,11 +376,10 @@ Object.assign(window.Raccoon, {
             if (block.child) layoutPass(block.child);
             if (block.child2) layoutPass(block.child2);
     
-            this.updateLayout(block, false); // Calculate layout for current block based on its children's calculated sizes
+            this.updateLayout(block, false);
         };
         layoutPass(rootId);
     
-        // Second pass: Position blocks and render them, ensuring correct relative positions
         const positionPass = (blockId, pos, depth) => {
             if (!blockId || positionVisited.has(blockId)) return;
             positionVisited.add(blockId);
@@ -426,12 +388,12 @@ Object.assign(window.Raccoon, {
             if (!block) return;
             
             block.position = pos;
-            block.depth = depth; // Store depth for z-indexing
-            this.renderBlock(block); // Render here after dimensions and position are stable
+            block.depth = depth;
+            this.renderBlock(block);
     
             let xOffset = 10;
             const PADDING_BETWEEN_ITEMS = 8;
-            const contentVerticalCenter = (block.shape && block.shape.startsWith('c_shape')) ? 14 : (block.shape === 'hat' ? 25 : block.height / 2);
+            const contentVerticalCenter = (block.shape && block.shape.startsWith('c_shape')) ? 14 : (block.height / 2);
     
             if (block.layout) {
                 block.layout.forEach(item => {
@@ -441,11 +403,10 @@ Object.assign(window.Raccoon, {
                         if (inputData) {
                             if (inputData.blockId && allBlocks[inputData.blockId]) {
                                 const childBlock = allBlocks[inputData.blockId];
-                                // Position child input block relative to parent's input slot
                                 positionPass(childBlock.id, { x: block.position.x + xOffset, y: block.position.y + contentVerticalCenter - (childBlock.height / 2)}, depth + 1);
                                 itemWidth = childBlock.width;
                             } else {
-                                itemWidth = inputData.width || 30; // Use calculated or default width for empty input slot
+                                itemWidth = inputData.width || 30;
                             }
                         }
                     } else if (item.type === 'label' || item.type === 'operator') {
@@ -453,26 +414,22 @@ Object.assign(window.Raccoon, {
                     } else if (item.type === 'icon') {
                         itemWidth = 16;
                     }
-                    if (item.type !== 'monitor') { // Don't add padding after monitor
+                    if (item.type !== 'monitor') {
                         xOffset += itemWidth + PADDING_BETWEEN_ITEMS;
                     }
                 });
             }
     
-            // Position child blocks for C-shapes
             if (block.child) {
                 positionPass(block.child, { x: pos.x + 20, y: pos.y + 28 }, depth + 1);
             }
-            if (block.child2) { // For 'else' part of if-else
+            if (block.child2) {
                 const cTopH = 28, cMidH = 24, cInnerMinH = 32;
                 let innerH1 = block.cInnerHeight1 || cInnerMinH;
                 positionPass(block.child2, { x: pos.x + 20, y: pos.y + cTopH + innerH1 + cMidH }, depth + 1);
             }
-            // Position next block in the stack
             if (block.next) {
-                // Requirement 1: Adjust Y position for hat blocks to ensure proper snapping
-                const nextY = (block.shape === 'hat') ? pos.y + block.height - 10 : pos.y + block.height;
-                positionPass(block.next, { x: pos.x, y: nextY }, depth);
+                positionPass(block.next, { x: pos.x, y: pos.y + block.height }, depth);
             }
         };
         

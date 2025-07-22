@@ -1,30 +1,40 @@
 Object.assign(window.Raccoon, {
     createVariable(name, scope) { 
-        const sprite = this.getActiveSprite(); 
-        // Check global scope first
-        if (this.variables.hasOwnProperty(name)) return false;
-        // Then check local scope if applicable
-        if (scope === 'local' && sprite && sprite.localVariables.hasOwnProperty(name)) return false;
-
-        if (scope === 'local' && sprite) { 
-            sprite.localVariables[name] = { value: 0, visible: false }; 
-        } else { 
-            this.variables[name] = { value: 0, visible: false }; 
+        const sprite = this.getActiveSprite();
+        if (scope === 'local' && sprite) {
+            if (sprite.localVariables.hasOwnProperty(name)) {
+                this.log(`Local variable "${name}" already exists for sprite "${sprite.name}".`, 'warn');
+                return false;
+            }
+            sprite.localVariables[name] = { value: 0, visible: false };
+            this.log(`Created local variable "${name}" for sprite "${sprite.name}".`, 'action');
+        } else {
+            if (this.variables.hasOwnProperty(name)) {
+                this.log(`Global variable "${name}" already exists.`, 'warn');
+                return false;
+            }
+            this.variables[name] = { value: 0, visible: false };
+            this.log(`Created global variable "${name}".`, 'action');
         } 
         return true; 
     },
 
     createList(name, scope) { 
-        const sprite = this.getActiveSprite(); 
-        // Check global scope first
-        if (this.lists.hasOwnProperty(name)) return false;
-        // Then check local scope if applicable
-        if (scope === 'local' && sprite && sprite.localLists.hasOwnProperty(name)) return false;
-
-        if (scope === 'local' && sprite) { 
-            sprite.localLists[name] = { value: [], visible: false }; 
-        } else { 
-            this.lists[name] = { value: [], visible: false }; 
+        const sprite = this.getActiveSprite();
+        if (scope === 'local' && sprite) {
+            if (sprite.localLists.hasOwnProperty(name)) {
+                this.log(`Local list "${name}" already exists for sprite "${sprite.name}".`, 'warn');
+                return false;
+            }
+            sprite.localLists[name] = { value: [], visible: false };
+            this.log(`Created local list "${name}" for sprite "${sprite.name}".`, 'action');
+        } else {
+            if (this.lists.hasOwnProperty(name)) {
+                this.log(`Global list "${name}" already exists.`, 'warn');
+                return false;
+            }
+            this.lists[name] = { value: [], visible: false };
+            this.log(`Created global list "${name}".`, 'action');
         } 
         return true; 
     },
